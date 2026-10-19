@@ -4,14 +4,9 @@ import unittest
 
 import numpy as np
 
-from subgen_proto import divide, signals, svf, util
+from subgen_proto import band, divide, signals, util
 
 FS = 48000
-
-
-def _range(x, fs, lo=30.0, hi=120.0):
-    """The source band-pass of SPEC §5.3 (4th-order Butterworth each side): DIVIDE consumes x_b, not raw audio."""
-    return svf.process_fast(svf.design_butter(4, lo, fs, "high") + svf.design_butter(4, hi, fs, "low"), x)
 
 
 def _inband_noise_sine(f, fs, dur, snr_db, seed):
@@ -67,7 +62,7 @@ class TestRobustness(unittest.TestCase):
     def test_noise_immunity_after_range_filter(self):
         # Broadband SIG-19 noise through the SPEC range filter (30-120 Hz) leaves 24 dB better in-band SNR.
         for snr in (20.0, 10.0):
-            x = _range(signals.sine_in_noise(60.0, FS, 4.0, snr_db=snr), FS)
+            x = band.range_filter(signals.sine_in_noise(60.0, FS, 4.0, snr_db=snr), FS)  # DIVIDE consumes x_b
             res = divide.divide(x, FS)
             self.assertLess(abs(util.zc_freq(res.y1[FS:], FS) - 30.0) / 30.0, 0.02, msg=f"snr {snr}")
 
