@@ -1,22 +1,22 @@
 # SUB-GEN — DECISIONS
 
-Data: 2026-10-19 · Status: wszystkie wpisy „Proponowane”, dopóki użytkownik nie zatwierdzi Fazy 0.
+Data: 2026-10-19 · Status: Faza 0 zatwierdzona przez użytkownika (2026-10-19, „przyjmuję wszystkie rekomendacje”); wpisy poniżej przyjęte.
 
 ## A. Rejestr decyzji (ADR)
 
 | ID | Decyzja | Status | Uzasadnienie (skrót) | Alternatywy |
 |---|---|---|---|---|
-| ADR-001 | JUCE 9.0.4 + CMake; standard C++20 (do potwierdzenia w Fazie 1) | Proponowana | najnowsza stabilna wersja; wspiera VST3/AU/AAX i wszystkie layouty, jakich potrzebujemy; C++20 działa na clang 17 (CLT) i MSVC 2022 | C++23 (Pamplejuce) — odłożone do czasu spike'a na CLT |
-| ADR-002 | Nazwa produktu inna niż „SubGen”; repo i nazwa robocza w kodzie: SUB-GEN | Proponowana — wymaga wyboru nazwy | SSL SubGen (2023) jest komercyjnym produktem o tej nazwie | zostawić „SubGen” (ryzyko znakowe) |
-| ADR-003 | Ścieżka licencyjna A (AGPLv3) | **Otwarta — decyzja użytkownika** | repo publiczne; 0 kosztów; AAX SDK dostępny na GPLv3 | Ścieżka B (JUCE EULA: Starter/Indie/Pro; kod prywatny lub własna licencja) |
-| ADR-004 | Windows x64 w v1.0; CI od Fazy 3 jako jedyna weryfikacja Windows | Proponowana | wymóg użytkownika (instalatory na oba systemy); brak lokalnego Windows | Windows jako „beta” bez testów ręcznych |
-| ADR-005 | Instalatory: macOS `.pkg` (pkgbuild/productbuild), Windows Inno Setup | Proponowana | narzędzia dostępne lokalnie i na runnerach (Inno Setup 6.7.1 preinstalowany) | `.dmg` (problemy z drag-and-drop), WiX/NSIS |
-| ADR-006 | Lokalne buildy na samym CLT + Ninja, bez pełnego Xcode | Proponowana — wymaga spike'a | 17–21 GiB wolnego miejsca; CLT ma SDK z frameworkami audio | pełny Xcode (kilkanaście GB) |
-| ADR-007 | Podpisywanie opcjonalne w CI (sekrety nie są wymagane do zielonego builda) | Proponowana | brak kont Apple Developer / Azure; Pamplejuce domyślnie wymaga podpisu | podpis wymagany od początku |
-| ADR-008 | AAX: cel budowany w CI, ale poza release do czasu uzyskania podpisu Avid | Proponowana | produkcyjny Pro Tools wymaga podpisu; brak Pro Tools lokalnie | AAX w v1.0 niepodpisane (tylko Pro Tools Developer) |
-| ADR-009 | Zakres silników v1.0: DIVIDE, TRACK, TRIGGER, HARMONIC, HYBRID; SPECTRAL/HQ w v1.1 | Proponowana | ogranicza ryzyko; SPECTRAL ma największy koszt latencji i testów | wszystkie silniki w v1.0 |
-| ADR-010 | Tryb LFE: LPF 120 Hz o umiarkowanym nachyleniu domyślnie (opcja stromego i linear-phase), metering z konwencjami poziomu, brak automatycznej zmiany wzmocnienia | Proponowana | ITU-R BS.775-4 Annex 7, ATSC A/52 (enkoder dodaje własny filtr) | sztywny stromy LPF |
-| ADR-011 | Host referencyjny: Cubase 13 (VST3, 5.1/7.1.2/7.1.4) | Proponowana | jedyny lokalny host | Reaper (dodatkowy, wymaga pobrania) |
+| ADR-001 | JUCE 9.0.4 + CMake; standard C++20 (do potwierdzenia w Fazie 1) | Przyjęta (2026-10-19) | najnowsza stabilna wersja; wspiera VST3/AU/AAX i wszystkie layouty, jakich potrzebujemy; C++20 działa na clang 17 (CLT) i MSVC 2022 | C++23 (Pamplejuce) — odłożone do czasu spike'a na CLT |
+| ADR-002 | Nazwa produktu inna niż „SubGen”; repo i nazwa robocza w kodzie: SUB-GEN | Przyjęta (2026-10-19): nazwa robocza SUB-GEN, nazwa produktu wybrana najpóźniej przed Fazą 6 | SSL SubGen (2023) jest komercyjnym produktem o tej nazwie | zostawić „SubGen” (ryzyko znakowe) |
+| ADR-003 | Ścieżka licencyjna A (AGPLv3) | Przyjęta (2026-10-19): ścieżka A, AGPLv3 | repo publiczne; 0 kosztów; AAX SDK dostępny na GPLv3 | Ścieżka B (JUCE EULA: Starter/Indie/Pro; kod prywatny lub własna licencja) |
+| ADR-004 | Windows x64 w v1.0; CI od Fazy 3 jako jedyna weryfikacja Windows | Przyjęta (2026-10-19) | wymóg użytkownika (instalatory na oba systemy); brak lokalnego Windows | Windows jako „beta” bez testów ręcznych |
+| ADR-005 | Instalatory: macOS `.pkg` (pkgbuild/productbuild), Windows Inno Setup | Przyjęta (2026-10-19) | narzędzia dostępne lokalnie i na runnerach (Inno Setup 6.7.1 preinstalowany) | `.dmg` (problemy z drag-and-drop), WiX/NSIS |
+| ADR-006 | Lokalne buildy na samym CLT + Ninja, bez pełnego Xcode | Przyjęta (2026-10-19), do potwierdzenia spike'iem w Fazie 3 | 17–21 GiB wolnego miejsca; CLT ma SDK z frameworkami audio | pełny Xcode (kilkanaście GB) |
+| ADR-007 | Podpisywanie opcjonalne w CI (sekrety nie są wymagane do zielonego builda) | Przyjęta (2026-10-19) | brak kont Apple Developer / Azure; Pamplejuce domyślnie wymaga podpisu | podpis wymagany od początku |
+| ADR-008 | AAX: cel budowany w CI, ale poza release do czasu uzyskania podpisu Avid | Przyjęta (2026-10-19) | produkcyjny Pro Tools wymaga podpisu; brak Pro Tools lokalnie | AAX w v1.0 niepodpisane (tylko Pro Tools Developer) |
+| ADR-009 | Zakres silników v1.0: DIVIDE, TRACK, TRIGGER, HARMONIC, HYBRID; SPECTRAL/HQ w v1.1 | Przyjęta (2026-10-19) | ogranicza ryzyko; SPECTRAL ma największy koszt latencji i testów | wszystkie silniki w v1.0 |
+| ADR-010 | Tryb LFE: LPF 120 Hz o umiarkowanym nachyleniu domyślnie (opcja stromego i linear-phase), metering z dwiema konwencjami poziomu (+10 dB odtwarzania: film / AC-3 / wymiana ITU; 0 dB: muzyka — korekta względem trzech konwencji z Fazy 0, patrz SPEC), brak automatycznej zmiany wzmocnienia | Przyjęta (2026-10-19) | ITU-R BS.775-4 Annex 7, ATSC A/52 (enkoder dodaje własny filtr) | sztywny stromy LPF |
+| ADR-011 | Host referencyjny: Cubase 13 (VST3, 5.1/7.1.2/7.1.4) | Przyjęta (2026-10-19) | jedyny lokalny host | Reaper (dodatkowy, wymaga pobrania) |
 
 ## B. Pytania do użytkownika (zbiorcza lista z rekomendacjami)
 
@@ -32,7 +32,11 @@ Data: 2026-10-19 · Status: wszystkie wpisy „Proponowane”, dopóki użytkown
 
 Wartości domyślne, jeśli odpowiesz tylko „OK”: rekomendacje powyżej, z nazwą roboczą SUB-GEN.
 
-## C. Zarys Fazy 1 (specyfikacja i architektura) — po akceptacji Fazy 0
+## B2. Odpowiedzi użytkownika (2026-10-19)
+Użytkownik przyjął wszystkie rekomendacje z listy pytań 1–9, z nazwą roboczą SUB-GEN: licencja AGPLv3 (ścieżka A); v1.0 bez AAX w release (AAX jako cel CI); bez podpisów systemowych na start; zakres silników v1.0 bez SPECTRAL/HQ; zgoda na instalacje wymienione w pytaniu 9 (po zatwierdzeniu SPEC, w Fazie 2–3), bez pełnego Xcode.
+Uwaga do pytania 5 (pushowanie): rekomendacja zakładała, że użytkownik przejrzy `docs/` przed pierwszym pushem; nie zostało to potwierdzone, więc **pierwszy push `main` jest odroczony do bramki Fazy 1**, gdzie zapytam o to jednym zdaniem. Do tego czasu nic nie jest wypychane.
+
+## C. Zarys Fazy 1 — zrealizowany 2026-10-19 w SPEC.md, SPEC_IO_UI.md, SPEC_BUILD_RELEASE.md, PARAMETERS.md i TEST_PLAN.md (oczekuje na akceptację)
 Dokument `docs/SPEC.md` (i tylko dokumenty, bez kodu produktu):
 1. Cele, antycele i granice v1.0 (MUST/SHOULD/COULD z uzasadnieniem).
 2. Schemat sygnałowy i tabela parametrów: ID, nazwa, zakres, jednostka, skala, wartość domyślna, wygładzanie, automatyzacja.
