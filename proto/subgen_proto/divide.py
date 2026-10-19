@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy import ndimage, signal as sps
+from scipy import signal as sps
 
 from . import envelope, svf
 
@@ -226,8 +226,7 @@ def apply_confidence_gate(y, conf, conf_gate_pct: float, fs: float) -> np.ndarra
 def constant_level(y, x, fs: float, f_ref: float, level_db: float = -12.0) -> np.ndarray:
     """'Constant' envelope mode: divide by the causal sliding peak of |x| over 1.25 periods of f_ref, so the
     result never exceeds level_db and sits on it in steady state (a 1 ms-attack peak follower overshoots)."""
-    w = max(int(np.ceil(1.25 * fs / f_ref)), 1)
-    env = ndimage.maximum_filter1d(np.abs(np.asarray(x, dtype=np.float64)), size=w, origin=(w - 1) // 2)
+    env = envelope.sliding_peak(np.abs(x), max(int(np.ceil(1.25 * fs / f_ref)), 1))
     gain = np.where(env > 1e-6, 10.0 ** (level_db / 20.0) / np.maximum(env, 1e-6), 0.0)
     return np.asarray(y) * gain
 

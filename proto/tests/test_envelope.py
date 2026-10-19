@@ -30,6 +30,23 @@ class TestPeakFollower(unittest.TestCase):
         self.assertGreater(y[-1], 0.99)
 
 
+class TestSlidingPeak(unittest.TestCase):
+    def test_causal_window_maximum(self):
+        # y[n] = max(x[n-w+1 .. n]): an impulse at n0 is held for w samples starting at n0 and not before.
+        x = np.zeros(100)
+        x[10], x[50] = 1.0, 0.5
+        y = envelope.sliding_peak(x, 8)
+        self.assertTrue(np.all(y[:10] == 0.0))
+        self.assertTrue(np.all(y[10:18] == 1.0))
+        self.assertTrue(np.all(y[18:50] == 0.0))
+        self.assertTrue(np.all(y[50:58] == 0.5))
+        self.assertTrue(np.all(y[58:] == 0.0))
+
+    def test_window_of_one_is_the_identity(self):
+        x = np.random.default_rng(0).standard_normal(50)
+        np.testing.assert_array_equal(envelope.sliding_peak(x, 1), x)
+
+
 class TestRmsFollower(unittest.TestCase):
     def test_rms_of_sine_is_amplitude_over_sqrt2(self):
         x = signals.sine(200.0, FS, 1.0, level_db=0.0)

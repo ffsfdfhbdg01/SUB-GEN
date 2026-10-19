@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy import signal as sps
+from scipy import ndimage, signal as sps
 
 
 def peak_follower(x, fs: float, attack_ms: float, release_ms: float) -> np.ndarray:
@@ -24,3 +24,8 @@ def rms_follower(x, fs: float, tau_ms: float) -> np.ndarray:
     a = 1.0 - np.exp(-1.0 / (tau_ms * 1e-3 * fs))
     x = np.asarray(x, dtype=np.float64)
     return np.sqrt(sps.lfilter([a], [1.0, -(1.0 - a)], x * x))
+
+
+def sliding_peak(x, window: int) -> np.ndarray:
+    """Causal running maximum: y[n] = max(x[n - window + 1 .. n]) (zero-padded before the start)."""
+    return ndimage.maximum_filter1d(np.asarray(x, dtype=np.float64), size=window, origin=(window - 1) // 2)
