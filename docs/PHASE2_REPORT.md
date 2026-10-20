@@ -1,6 +1,6 @@
 # SUB-GEN — Raport Fazy 2: prototyp DSP (Python)
 
-Data: 2026-10-20 · Gałąź: `dev` (lokalnie, nic nie wypchnięto) · Stan: **czeka na Twoją akceptację (bramka Fazy 2)**
+Data: 2026-10-20 · Gałąź: `dev` (lokalnie, nic nie wypchnięto) · Stan: **zaakceptowany 2026-10-20** (rekomendacje D1–D9); korekty naniesione w SPEC 0.2
 Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `proto/` · Wykresy: `docs/img/` · Pliki odsłuchowe: `renders/` (poza gitem)
 
 ## 0. W skrócie
@@ -56,7 +56,7 @@ Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `pr
 | P2-05 | HARMONIC | wagi ≤ 0,5 dB, DC ≤ −80 dBFS (T-HARM-01) | 0,017 dB; −248 dBFS (obwiednia ze SPEC: 13,6 dB) | PASS (po korekcie K-07) |
 | P2-05 | — | IMD dwóch tonów (T-HARM-02, informacyjnie) | 72 % mocy wyjścia to intermodulacja (najsilniejsza linia: f1+f2) | INFO |
 | P2-06 | Drive | harmoniczne vs wzorzec 16× ≤ 1 dB (T-DRV-01) | Live 0,11 / Mix 0,03 / Print 0,01 dB | PASS |
-| P2-06 | — | ADAA vs naiwny (T-DRV-02), Auto Gain ±0,5 dB (T-DRV-03), DC ≤ −80 dBFS (T-DRV-04), drive 0 bit-exact (T-DRV-05) | aliasing o 7,8–9,7 dB niższy niż bez ADAA; 0,036 dB; −291 dBFS; ✓ | PASS |
+| P2-06 | — | ADAA vs naiwny (T-DRV-02), Auto Gain ±0,5 dB (T-DRV-03), DC ≤ −80 dBFS (T-DRV-04), drive 0 bit-exact (T-DRV-05) | aliasing o 7,8–9,7 dB niższy niż bez ADAA (TEST_PLAN wymagał ≥ 12 dB informacyjnie → K-21); 0,036 dB; −291 dBFS; ✓ | PASS (T-DRV-02: INFO) |
 | P2-06 | — | aliasing Live ≤ −80, Mix ≤ −90, Print ≤ −90 dB (T-ALIAS-01 [P2]) | Hard 100 %: Live **−55**, Mix **−77**, Print −95 dB; Fold: brak aliasingu | **2× FAIL** → K-09, D2 |
 | P2-07 | Faza | para Hilberta ≤ 1° (T-FILT-05); rotacja ±1° / ±0,05 dB (T-PHS-02); polaryzacja (T-PHS-01) | 3 sekcje/gałąź: 0,86°, 4: 0,133°; rotacja 0,133° / 0,010 dB; x + (−x) = 0 | PASS |
 | P2-07 | — | Auto-Align ±15° (T-PHS-03) | 48 syntetycznych optimów w 7,5°; brak nakładania → pewność 0; SIG-18: siatka 15° traci ≤ 0,12 dB | PASS |
@@ -168,6 +168,7 @@ Naniosę je dopiero po Twoim OK, osobnym commitem. Do bramki SPEC pozostaje bez 
 | K-18 | TEST_PLAN T-TRIG-02/03/04 | Hilbert na zanikającym chirpie daje 3–8 % i 0,3–0,7 dB błędu; globalna druga różnica wykrywa „klik” na zagięciu ataku; test rozmiarów bloków nie da się zrobić offline | T-TRIG-03: połowy okresu między przejściami przez zero i próbki szczytowe. T-TRIG-04: druga różnica w oknie ±1 ms wokół retriggera. T-TRIG-02: rozmiary bloków w C++ | P2-04 |
 | K-19 | TEST_PLAN T-TRK-02 | granica „[P2]” | ≤ 50 ms przy W = 83,5 ms (zmierzono 43 ms) | P2-03 |
 | K-20 | TEST_PLAN T-HARM-02, T-LIM-02 | wartości „[P2]” | T-HARM-02 informacyjnie (72 % IMD dla dwóch tonów); T-LIM-02 z §4 | P2-05, P2-09 |
+| K-21 | TEST_PLAN T-DRV-02 | (dopisane po bramce, 2026-10-20) próg „≥ 12 dB” (informacyjnie) nie zgadza się z pomiarem: ADAA obniża aliasing o 7,8–9,7 dB | ≥ 6 dB (informacyjnie) | P2-06 |
 
 ## 7. Ryzyka i ograniczenia
 

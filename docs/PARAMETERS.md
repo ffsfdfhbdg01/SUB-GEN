@@ -1,6 +1,6 @@
 # SUB-GEN — PARAMETERS (rejestr parametrów v1.0)
 
-Status: projekt Fazy 1 · Źródło prawdy dla ID, zakresów i wartości domyślnych · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [TEST_PLAN.md](TEST_PLAN.md)
+Status: projekt Fazy 1 z korektami Fazy 2 (2026-10-20: `align_ms` 0–40 ms, `comp_attack` bez podłogi, Linear Phase tylko dla LP) · Źródło prawdy dla ID, zakresów i wartości domyślnych · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [TEST_PLAN.md](TEST_PLAN.md)
 Liczba parametrów w v1.0: **141** (sprawdzane skryptem spójności; zob. SPEC_BUILD_RELEASE §11).
 
 ## 1. Konwencje
@@ -10,7 +10,7 @@ Liczba parametrów w v1.0: **141** (sprawdzane skryptem spójności; zob. SPEC_B
 - **Skala:** lin · log (po wartości fizycznej: Hz, ms, stosunek) · lin dB.
 - **Wygładzanie:** G20 = multiplikatywne 20 ms (wzmocnienia) · F20 = multiplikatywne 20 ms w domenie log (częstotliwości) · L20 = liniowe 20 ms · X ms = crossfade · „–” = brak (zmiana na granicy bloku).
 - **Auto:** A = automatyzowalny · N = nieautomatyzowalny (`withAutomatable(false)`; zmiana wpływa na latencję lub alokację).
-- **Relacje wymuszane w `sanitise()`** (audio thread, bez alokacji): `range_hi` ≥ 1,2 × `range_lo` · `lfe_lp_freq` ≥ 2 × `lfe_hp_freq` · `filt_type` = Bessel ogranicza `sub_hp_slope` i `sub_lp_slope` do 48 dB/okt · `filt_phase` = LinearPhase działa tylko przy `quality` = Print. Parametr „nadrzędny” (pierwszy w relacji) wygrywa.
+- **Relacje wymuszane w `sanitise()`** (audio thread, bez alokacji): `range_hi` ≥ 1,2 × `range_lo` · `lfe_lp_freq` ≥ 2 × `lfe_hp_freq` · `filt_type` = Bessel ogranicza `sub_hp_slope` i `sub_lp_slope` do 48 dB/okt · `filt_phase` = LinearPhase działa tylko przy `quality` = Print i tylko dla LP (SPEC §7.6). Parametr „nadrzędny” (pierwszy w relacji) wygrywa.
 - **Nazwy w UI i nazwy hosta po angielsku**; krótkie nazwy (≤ 8 znaków) dla AAX/kontrolerów powstaną w Fazie 4.
 
 ## 2. Rejestr
@@ -115,7 +115,7 @@ Liczba parametrów w v1.0: **141** (sprawdzane skryptem spójności; zob. SPEC_B
 | `comp_thresh` | Comp Threshold | float | −40…0 dBFS | −18 | lin dB · L20 | A | |
 | `comp_ratio` | Comp Ratio | float | 1…20 :1 | 3 | log · L20 | A | 20 = limiting |
 | `comp_knee` | Comp Knee | float | 0…12 dB | 6 | lin · L20 | A | |
-| `comp_attack` | Comp Attack | float | 0,1…100 ms | 10 | log · – | A | podłoga wg reguły tętnień (SPEC §7.4) |
+| `comp_attack` | Comp Attack | float | 0,1…100 ms | 10 | log · – | A | bez podłogi — detektory bez tętnień (SPEC §7.4) |
 | `comp_release` | Comp Release | float | 10…1000 ms | 150 | log · – | A | |
 | `comp_auto_rel` | Auto Release | bool | off · on | on | – | A | |
 | `comp_detect` | Comp Detector | choice | Peak · RMS | RMS | – | A | |
@@ -142,7 +142,7 @@ Pełna lista ID: `eq1_on` `eq1_type` `eq1_freq` `eq1_gain` `eq1_q` · `eq2_on` `
 | `sub_lp_freq` | Sub LP | float | 30…500 Hz | 140 | log · F20 | A | w trybie LFE zastępowany przez `lfe_lp_freq` |
 | `sub_lp_slope` | LP Slope | choice | 12 · 24 · 48 · 96 dB/okt | 24 | – | A | |
 | `filt_type` | Filter Type | choice | Butterworth · Linkwitz-Riley · Bessel | Butterworth | X 20 ms | A | |
-| `filt_phase` | Filter Phase | choice | Min Phase · Linear Phase | Min Phase | X 40 ms | N | Linear tylko w Print; zmienia latencję |
+| `filt_phase` | Filter Phase | choice | Min Phase · Linear Phase | Min Phase | X 40 ms | N | Linear Phase tylko w Print i tylko dla LP; zmienia latencję |
 | `lim_on` | Limiter | bool | off · on | on | X 10 ms | A | tylko tor sub |
 | `lim_ceiling` | Limiter Ceiling | float | −12…0 dBFS | −1,0 | lin dB · L20 | A | |
 | `lim_release` | Limiter Release | float | 10…500 ms | 100 | log · – | A | |
@@ -161,7 +161,7 @@ Pełna lista ID: `eq1_on` `eq1_type` `eq1_freq` `eq1_gain` `eq1_q` · `eq2_on` `
 | `mix` | Mix | float | 0…100 % | 50 | lin · L20 | A | tryb Mix |
 | `mix_law` | Mix Law | choice | Equal Power · Linear | Equal Power | – | A | |
 | `wet_only` | Wet Only | bool | off · on | off | X 10 ms | A | dry = 0, latencja bez zmian |
-| `align_ms` | Align | float | 0…20 ms | 0 | lin · – | N | dodatkowe opóźnienie dry; zmienia latencję |
+| `align_ms` | Align | float | 0…40 ms | 0 | lin · – | N | dodatkowe opóźnienie dry; zmienia latencję; akcja Auto (SPEC §9.2) |
 
 ### 2.13 Routing
 | ID | Nazwa | Typ | Zakres / wartości | Domyślna | Skala · wygładzanie | Auto | Uwagi |

@@ -52,20 +52,20 @@ Przed oddaniem SPEC przeczytam go oczami wykonawcy; niezależny przegląd przez 
 
 ## D. Faza 2 (2026-10-20): wyniki prototypu i proponowane ADR
 
-Raport: `docs/PHASE2_REPORT.md`. Wszystkie wpisy poniżej mają status **Proponowana (bramka Fazy 2)** — SPEC zmienię dopiero po akceptacji (decyzje D1–D9 w raporcie).
+Raport: `docs/PHASE2_REPORT.md`. Wszystkie wpisy zostały **zaakceptowane na bramce Fazy 2 (2026-10-20)** razem z rekomendacjami D1–D9 i naniesione w SPEC 0.2. Doprecyzowania przy nanoszeniu: ADR-018 — sposób liczenia G_c z Tone (widmo okresu w wątku UI, ważenie odpowiedzią Tone przy k·f_sub1 w wątku audio); ADR-020 — stała długość jądra N_LIN (≈ 42,7 ms przy 48 kHz), bo latencja nie może zależeć od `sub_lp_freq`.
 
 | ID | Decyzja | Status | Uzasadnienie (skrót) | Alternatywy |
 |---|---|---|---|---|
-| ADR-012 | DIVIDE: licznik (odwracanie znaku) + tor wygładzający jako podstawa; „phase halving” najwyżej jako wariant Print | Proponowana | zerowa latencja, sub sprzężony z falą, błąd częstotliwości ~2·10⁻⁹ % | phase halving (czystsze widmo, ale wymaga FIR Hilberta) |
-| ADR-013 | DIVIDE: pewność z trendu okresów (mediana 5) + histereza bramki zamiast reguły z SPEC §6.2 | Proponowana | reguła ze SPEC zamyka bramkę na każdej stopie; trend: stopa otwarta w 100 %, szum losowy ≤ 1,5 % | reguła ze SPEC |
-| ADR-014 | TRACK: MPM na ramkach świadomych onsetu, skalibrowana pewność, prior „trzymaj + 3 ramki”; YIN odrzucony; PLL tylko do zamka fazy | Proponowana | MPM: 1,8 centa, 0 błędów oktawowych; YIN: 36 klatek z błędem oktawowym na SIG-05 | YIN, PLL jako detektor |
-| ADR-015 | L_look Live/Mix/Print = 0/47/65 ms | Proponowana (D3) | TRACK potrzebuje 2 okresów; 25/50 ms wyrównuje tylko nuty ≥ 100/45 Hz | 25/50 ms ze SPEC |
-| ADR-016 | HARMONIC: obwiednia max-hold 1,5 okresu `range_lo` + 5/60 ms | Proponowana | obwiednia ze SPEC daje 13,6 dB błędu wag; max-hold 0,017 dB | peak follower ze SPEC |
-| ADR-017 | Drive: aliasing jako składowe nieharmoniczne (tony 31/81/121 Hz); kryterium po LP toru sub | Proponowana (D2) | Hard 100 %: Live −55 / Mix −77 / Print −95 dB pełnopasmowo, −129 dB poniżej 500 Hz | progi pełnopasmowe; 2× także w Live |
-| ADR-018 | Auto Gain na RMS(AC) mieszanki α, z Tone przy f_sub1 | Proponowana (D4) | ±0,04 dB bez Tone; z Tone 500 Hz bez kompensacji do −8,8 dB | bez Tone |
-| ADR-019 | Para Hilberta 4 sekcje/gałąź; Auto-Align analizuje sub po gałęzi A; kanonicznie \|θ\| ≤ 90° z polaryzacją | Proponowana | 0,133°, ±0,010 dB; θ = 0 = gałąź A (do 9,8 ms opóźnienia) | 3 sekcje (0,86°, ±0,065 dB) |
-| ADR-020 | Linear Phase: cel \|H\|, Kaiser β = 3, nieparzyste N; v1.0 tylko dla LP | Proponowana (D5) | HP 20 Hz kosztuje ~159 ms przy 48 kHz; sam LP 39 ms | HP+LP; całość w v1.1 |
-| ADR-021 | LFE: domyślnie Butterworth 24 dB/okt przy 120 Hz | Proponowana | 14,25 dB przy 1,5·fc, −0,17 dB przy 80 Hz, 3,65 ms przy 40 Hz | 12/48 dB/okt, LR, Bessel |
-| ADR-022 | Kompresor: detektory bez tętnień (RMS: okno + hold; Peak: hold); reguła tętnień usunięta; auto release 50/500 ms | Proponowana (D7) | THD −124 dB przy dowolnych czasach; reguła nie pomaga, a na onsecie bywa szkodliwa | reguła jako podłoga |
-| ADR-023 | Limiter lookahead: min-hold → release → wygładzanie Hanna (gwarancja sufitu); granice THD T-LIM-02: Mix ≤ −35 dB, Print ≤ −50 dB | Proponowana | przekroczenie 3·10⁻¹⁶ na sygnałach stresowych | — |
-| ADR-024 | `align_ms` 0–40 ms + akcja Auto | Proponowana (D6) | naturalne opóźnienie toru sub: 26 ms przy 40 Hz, 37 ms przy 30 Hz | 0–20 ms |
+| ADR-012 | DIVIDE: licznik (odwracanie znaku) + tor wygładzający jako podstawa; „phase halving” najwyżej jako wariant Print | Zaakceptowana | zerowa latencja, sub sprzężony z falą, błąd częstotliwości ~2·10⁻⁹ % | phase halving (czystsze widmo, ale wymaga FIR Hilberta) |
+| ADR-013 | DIVIDE: pewność z trendu okresów (mediana 5) + histereza bramki zamiast reguły z SPEC §6.2 | Zaakceptowana | reguła ze SPEC zamyka bramkę na każdej stopie; trend: stopa otwarta w 100 %, szum losowy ≤ 1,5 % | reguła ze SPEC |
+| ADR-014 | TRACK: MPM na ramkach świadomych onsetu, skalibrowana pewność, prior „trzymaj + 3 ramki”; YIN odrzucony; PLL tylko do zamka fazy | Zaakceptowana | MPM: 1,8 centa, 0 błędów oktawowych; YIN: 36 klatek z błędem oktawowym na SIG-05 | YIN, PLL jako detektor |
+| ADR-015 | L_look Live/Mix/Print = 0/47/65 ms | Zaakceptowana (D3) | TRACK potrzebuje 2 okresów; 25/50 ms wyrównuje tylko nuty ≥ 100/45 Hz | 25/50 ms ze SPEC |
+| ADR-016 | HARMONIC: obwiednia max-hold 1,5 okresu `range_lo` + 5/60 ms | Zaakceptowana | obwiednia ze SPEC daje 13,6 dB błędu wag; max-hold 0,017 dB | peak follower ze SPEC |
+| ADR-017 | Drive: aliasing jako składowe nieharmoniczne (tony 31/81/121 Hz); kryterium po LP toru sub | Zaakceptowana (D2) | Hard 100 %: Live −55 / Mix −77 / Print −95 dB pełnopasmowo, −129 dB poniżej 500 Hz | progi pełnopasmowe; 2× także w Live |
+| ADR-018 | Auto Gain na RMS(AC) mieszanki α, z Tone przy f_sub1 | Zaakceptowana (D4) | ±0,04 dB bez Tone; z Tone 500 Hz bez kompensacji do −8,8 dB | bez Tone |
+| ADR-019 | Para Hilberta 4 sekcje/gałąź; Auto-Align analizuje sub po gałęzi A; kanonicznie \|θ\| ≤ 90° z polaryzacją | Zaakceptowana | 0,133°, ±0,010 dB; θ = 0 = gałąź A (do 9,8 ms opóźnienia) | 3 sekcje (0,86°, ±0,065 dB) |
+| ADR-020 | Linear Phase: cel \|H\|, Kaiser β = 3, nieparzyste N; v1.0 tylko dla LP, stała długość N_LIN (≈ 42,7 ms przy 48 kHz) | Zaakceptowana (D5) | HP 20 Hz kosztuje ~159 ms przy 48 kHz; sam LP 39 ms | HP+LP; całość w v1.1 |
+| ADR-021 | LFE: domyślnie Butterworth 24 dB/okt przy 120 Hz | Zaakceptowana | 14,25 dB przy 1,5·fc, −0,17 dB przy 80 Hz, 3,65 ms przy 40 Hz | 12/48 dB/okt, LR, Bessel |
+| ADR-022 | Kompresor: detektory bez tętnień (RMS: okno + hold; Peak: hold); reguła tętnień usunięta; auto release 50/500 ms | Zaakceptowana (D7) | THD −124 dB przy dowolnych czasach; reguła nie pomaga, a na onsecie bywa szkodliwa | reguła jako podłoga |
+| ADR-023 | Limiter lookahead: min-hold → release → wygładzanie Hanna (gwarancja sufitu); granice THD T-LIM-02: Mix ≤ −35 dB, Print ≤ −50 dB | Zaakceptowana | przekroczenie 3·10⁻¹⁶ na sygnałach stresowych | — |
+| ADR-024 | `align_ms` 0–40 ms + akcja Auto | Zaakceptowana (D6) | naturalne opóźnienie toru sub: 26 ms przy 40 Hz, 37 ms przy 30 Hz | 0–20 ms |
