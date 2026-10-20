@@ -56,7 +56,7 @@ Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `pr
 | P2-05 | HARMONIC | wagi ≤ 0,5 dB, DC ≤ −80 dBFS (T-HARM-01) | 0,017 dB; −248 dBFS (obwiednia ze SPEC: 13,6 dB) | PASS (po korekcie K-07) |
 | P2-05 | — | IMD dwóch tonów (T-HARM-02, informacyjnie) | 72 % mocy wyjścia to intermodulacja (najsilniejsza linia: f1+f2) | INFO |
 | P2-06 | Drive | harmoniczne vs wzorzec 16× ≤ 1 dB (T-DRV-01) | Live 0,11 / Mix 0,03 / Print 0,01 dB | PASS |
-| P2-06 | — | ADAA vs naiwny (T-DRV-02), Auto Gain ±0,5 dB (T-DRV-03), DC ≤ −80 dBFS (T-DRV-04), drive 0 bit-exact (T-DRV-05) | −7,8 dB aliasingu; 0,036 dB; −291 dBFS; ✓ | PASS |
+| P2-06 | — | ADAA vs naiwny (T-DRV-02), Auto Gain ±0,5 dB (T-DRV-03), DC ≤ −80 dBFS (T-DRV-04), drive 0 bit-exact (T-DRV-05) | aliasing o 7,8–9,7 dB niższy niż bez ADAA; 0,036 dB; −291 dBFS; ✓ | PASS |
 | P2-06 | — | aliasing Live ≤ −80, Mix ≤ −90, Print ≤ −90 dB (T-ALIAS-01 [P2]) | Hard 100 %: Live **−55**, Mix **−77**, Print −95 dB; Fold: brak aliasingu | **2× FAIL** → K-09, D2 |
 | P2-07 | Faza | para Hilberta ≤ 1° (T-FILT-05); rotacja ±1° / ±0,05 dB (T-PHS-02); polaryzacja (T-PHS-01) | 3 sekcje/gałąź: 0,86°, 4: 0,133°; rotacja 0,133° / 0,010 dB; x + (−x) = 0 | PASS |
 | P2-07 | — | Auto-Align ±15° (T-PHS-03) | 48 syntetycznych optimów w 7,5°; brak nakładania → pewność 0; SIG-18: siatka 15° traci ≤ 0,12 dB | PASS |
@@ -121,7 +121,7 @@ Koszt wyznacza narożnik HP (przy 48 kHz):
 | L_lin | (N−1)/2 przy **nieparzystym N** (tabela §3) | P2-08 |
 | L_total przy 48 kHz | Live 0; Mix 48,5 ms; Print 66,5 ms; Print + Linear Phase (HP 20 + LP 120) 225 ms | P2-10 |
 | TRACK | fs_d = fs/⌊fs/2000⌋ (2004,5 Hz przy 44,1 kHz); W = ⌈2,5·fs_d/max(range_lo, 20)⌉; hop 2 ms; próg MPM 0,9; pewność = clip((jasność − 0,6)/0,4); prior: okno ±25 %, 3 zgodne ramki, 5 ramek bez sygnału zeruje stan | P2-03 |
-| DIVIDE | pewność = 1 − min(1, mediana(r z 5 okresów)/0,15), gdzie r = \|T_k − (2T_{k−1} − T_{k−2})\|/T_{k−1}; bramka z histerezą 0,2; przerwa ≥ max(2,5 okresu, 40 ms) zaczyna nową nutę; tryb Constant: maksimum kroczące z 1,25 okresu | P2-02 |
+| DIVIDE | pewność = 1 − min(1, mediana(r z 5 okresów)/0,15), gdzie r = \|T_k − (2T_{k−1} − T_{k−2})\|/T_{k−1}; bramka otwiera się przy pewności ≥ 0,2 + 0,6·conf_gate/100 i zamyka 0,2 niżej; przerwa ≥ max(2,5 okresu, 40 ms) zaczyna nową nutę; tryb Constant: maksimum kroczące z 1,25 okresu | P2-02 |
 | HARMONIC | obwiednia: max-hold z 1,5 okresu `range_lo`, potem atak 5 / release 60 ms; HP 15 Hz 2. rzędu | P2-05 |
 | Drive | oversampling: przepustowe do 0,45·fs, zaporowe ≥ 100 dB od 0,55·fs; Auto Gain: tabela w Załączniku A | P2-06 |
 | Para Hilberta | 4 sekcje/gałąź, bieguny w Załączniku B | P2-07 |
@@ -209,7 +209,7 @@ Naniosę je dopiero po Twoim OK, osobnym commitem. Do bramki SPEC pozostaje bez 
 | D5 | Zakres Linear Phase w v1.0? | tylko LP (39 ms przy 48 kHz) | HP+LP (do ~160 ms) albo całość do v1.1 (SPK-6) |
 | D6 | `align_ms`? | 0–40 ms + akcja Auto | zostawić 0–20 ms |
 | D7 | Reguła tętnień kompresora? | zastąpić definicją detektorów bez tętnień, regułę usunąć | zostawić jako podłogę czasów |
-| D8 | Niezależny przegląd kodu prototypu przed Fazą 3? | tak, jeśli zgodzisz się na subagenta-recenzenta (najmocniejszy model, cała gałąź) | wystarczy mój przegląd |
+| D8 | Niezależny przegląd kodu prototypu przed Fazą 3? | tak — niezależny recenzent w osobnej sesji (świeży kontekst, cała gałąź, tylko odczyt); proponuję ją kartą w czacie | wystarczy mój przegląd |
 | D9 | Push na GitHub? | nadal nie (zgodnie z „Bez pusha na razie”); zapytam przed Fazą 3 | wypchnąć `dev` teraz |
 
 ## 10. Następne kroki

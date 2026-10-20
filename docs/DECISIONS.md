@@ -63,7 +63,7 @@ Raport: `docs/PHASE2_REPORT.md`. Wszystkie wpisy poniżej mają status **Propono
 | ADR-016 | HARMONIC: obwiednia max-hold 1,5 okresu `range_lo` + 5/60 ms | Proponowana | obwiednia ze SPEC daje 13,6 dB błędu wag; max-hold 0,017 dB | peak follower ze SPEC |
 | ADR-017 | Drive: aliasing jako składowe nieharmoniczne (tony 31/81/121 Hz); kryterium po LP toru sub | Proponowana (D2) | Hard 100 %: Live −55 / Mix −77 / Print −95 dB pełnopasmowo, −129 dB poniżej 500 Hz | progi pełnopasmowe; 2× także w Live |
 | ADR-018 | Auto Gain na RMS(AC) mieszanki α, z Tone przy f_sub1 | Proponowana (D4) | ±0,04 dB bez Tone; z Tone 500 Hz bez kompensacji do −8,8 dB | bez Tone |
-| ADR-019 | Para Hilberta 4 sekcje/gałąź; Auto-Align analizuje sub po gałęzi A; kanonicznie \|θ\| ≤ 90° z polaryzacją | Proponowana | 0,133°, ±0,010 dB; θ = 0 = gałąź A (do 9,8 ms opóźnienia) | 3 sekcje (0,86°, ±0,054 dB) |
+| ADR-019 | Para Hilberta 4 sekcje/gałąź; Auto-Align analizuje sub po gałęzi A; kanonicznie \|θ\| ≤ 90° z polaryzacją | Proponowana | 0,133°, ±0,010 dB; θ = 0 = gałąź A (do 9,8 ms opóźnienia) | 3 sekcje (0,86°, ±0,065 dB) |
 | ADR-020 | Linear Phase: cel \|H\|, Kaiser β = 3, nieparzyste N; v1.0 tylko dla LP | Proponowana (D5) | HP 20 Hz kosztuje ~159 ms przy 48 kHz; sam LP 39 ms | HP+LP; całość w v1.1 |
 | ADR-021 | LFE: domyślnie Butterworth 24 dB/okt przy 120 Hz | Proponowana | 14,25 dB przy 1,5·fc, −0,17 dB przy 80 Hz, 3,65 ms przy 40 Hz | 12/48 dB/okt, LR, Bessel |
 | ADR-022 | Kompresor: detektory bez tętnień (RMS: okno + hold; Peak: hold); reguła tętnień usunięta; auto release 50/500 ms | Proponowana (D7) | THD −124 dB przy dowolnych czasach; reguła nie pomaga, a na onsecie bywa szkodliwa | reguła jako podłoga |
