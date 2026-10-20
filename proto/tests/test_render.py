@@ -136,6 +136,47 @@ class TestRenderFileCli(unittest.TestCase):
             self.assertEqual(y.ndim, 1)
             self.assertLess(util.band_db(y, FS, 400.0, 20000.0), util.band_db(y, FS, 15.0, 120.0) - 30.0)
 
+    def test_render_file_aligns_the_dry_like_align_ms(self):
+        # a click in the input: its position in the 'add' output moves with --align-ms; 'auto' is the source band's
+        # group delay at sqrt(range_lo * range_hi) (60 Hz for 30-120 Hz), as in the listening renders
+        from experiments import render_file
+        from subgen_proto import svf
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "in.wav"
+            x = np.zeros(FS)
+            x[FS // 2] = 0.5
+            sf.write(src, x, FS, subtype="PCM_24")
+            where = {}
+            for align in ("0", "20", "auto"):
+                out = Path(tmp) / f"out_{align}.wav"
+                render_file.main([str(src), "--engine", "divide", "--align-ms", align, "--out", str(out)])
+                where[align] = int(np.argmax(np.abs(sf.read(out)[0])))
+            self.assertEqual(where["20"] - where["0"], int(round(0.020 * FS)))
+            secs = svf.design_butter(4, 30.0, FS, "high") + svf.design_butter(4, 120.0, FS, "low")
+            auto = int(round(float(svf.group_delay_s(secs, [60.0], FS)[0]) * FS))
+            self.assertEqual(where["auto"] - where["0"], auto)
+
+    def test_render_file_keeps_surround_and_lfe_channels_untouched(self):
+        # a 5.1 file (FL FR FC LFE BL BR): the sub goes to the front pair only, unless --channels says otherwise
+        from experiments import render_file
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "in51.wav"
+            x = np.zeros((FS, 6))
+            x[:, 0] = x[:, 1] = signals.kick(FS, n_hits=2, spacing=0.5, level_db=-6.0)
+            sf.write(src, x, FS, subtype="PCM_24")
+            out = Path(tmp) / "out51.wav"
+            render_file.main([str(src), "--engine", "trigger", "--out", str(out)])
+            y, _ = sf.read(out)
+            for ch in (2, 3, 4, 5):
+                self.assertEqual(float(np.max(np.abs(y[:, ch]))), 0.0, msg=f"channel {ch}")
+            self.assertGreater(util.band_db(y[:, 0], FS, 20.0, 100.0), util.band_db(x[:, 0], FS, 20.0, 100.0) + 1.0)
+            out_lfe = Path(tmp) / "out51_lfe.wav"
+            render_file.main([str(src), "--engine", "trigger", "--channels", "3", "--out", str(out_lfe)])
+            y, _ = sf.read(out_lfe)
+            self.assertGreater(float(np.max(np.abs(y[:, 3]))), 0.0)
+            for ch in (2, 4, 5):
+                self.assertEqual(float(np.max(np.abs(y[:, ch]))), 0.0, msg=f"channel {ch}")
+
     def test_render_file_rejects_an_unknown_engine(self):
         from experiments import render_file
         with self.assertRaises(SystemExit):

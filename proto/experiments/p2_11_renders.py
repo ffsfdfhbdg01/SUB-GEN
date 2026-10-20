@@ -149,7 +149,8 @@ UC5 film LFE, 5.1 (FL FR FC LFE BL BR)
 
 Process your own material:
   PYTHONPATH=proto .venv/bin/python -m experiments.render_file your.wav --engine divide|track|trigger|harmonic
-  (see --help: --mode add|wet, --sub-db, --drive, --range-lo/--range-hi, --lookahead-ms, --lp, --ceiling)
+  (see --help: --mode add|wet, --sub-db, --drive, --range-lo/--range-hi, --lookahead-ms, --lp, --ceiling,
+   --align-ms (default auto, like these renders), --channels (default: the front pair; 3 = LFE of a 5.1 WAV))
 
 {len(written)} audio files, {size_mb:.1f} MB.
 """

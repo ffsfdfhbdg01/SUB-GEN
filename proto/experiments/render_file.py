@@ -7,8 +7,11 @@
 
 The input is summed to mono for detection (SPEC §5.2 Sum) and band-limited to [range_lo, range_hi] (§5.3); the engine
 turns that into a sub, which then goes through level -> Drive (+ 5 Hz DC blocker) -> low-pass -> lookahead limiter
-(5 ms, like Print). 'add' delays the dry by the limiter's lookahead and adds the sub to every channel (the result is
-scaled down if it would clip); 'wet' writes the sub alone (mono). Output: 24-bit WAV at the input's sample rate.
+(5 ms, like Print). 'add' delays the dry by the limiter's lookahead plus --align-ms (default 'auto': the source band's
+group delay at sqrt(range_lo * range_hi), as in the listening renders and as align_ms does in the plug-in) and adds the
+sub to the front pair (channels 0 and 1; to every channel of a mono or stereo file; --channels picks others, e.g. 3 for
+the LFE of a 5.1 WAV); the result is scaled down if it would clip. 'wet' writes the sub alone (mono).
+Output: 24-bit WAV at the input's sample rate.
 This is an offline prototype for listening, not the plug-in: no surround routing, no LFE mode, no phase tools.
 """
 from __future__ import annotations
@@ -40,7 +43,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--drive-mode", choices=drive.MODES, default="soft")
     p.add_argument("--lp", type=float, default=None, help="sub low-pass [Hz] (default 120, or 600 for HARMONIC)")
     p.add_argument("--ceiling", type=float, default=-1.0, help="sub limiter ceiling [dBFS]")
+    p.add_argument("--align-ms", default="auto", help="extra dry delay [ms], or 'auto' = the source band's group delay")
+    p.add_argument("--channels", default=None, help="comma-separated channels that get the sub (default: the front pair)")
     return p
+
+
+def align_samples(arg: str, fs: float, lo: float, hi: float) -> int:
+    if arg == "auto":
+        secs = svf.design_butter(4, lo, fs, "high") + svf.design_butter(4, hi, fs, "low")
+        return int(round(float(svf.group_delay_s(secs, [float(np.sqrt(lo * hi))], fs)[0]) * fs))
+    return int(round(float(arg) * 1e-3 * fs))
 
 
 def main(argv=None) -> Path:
@@ -60,9 +72,10 @@ def main(argv=None) -> Path:
     if a.mode == "wet":
         y = sub
     else:
-        d = int(round(LIMITER_LOOKAHEAD_MS * 1e-3 * fs))
-        dry = np.vstack([np.zeros((d, x.shape[1])), x[:len(x) - d]])
-        y = dry + sub[:, None]
+        d = min(len(x), int(round(LIMITER_LOOKAHEAD_MS * 1e-3 * fs)) + align_samples(a.align_ms, fs, a.range_lo, a.range_hi))
+        y = np.vstack([np.zeros((d, x.shape[1])), x[:len(x) - d]])
+        chans = [int(c) for c in a.channels.split(",")] if a.channels else list(range(min(2, x.shape[1])))
+        y[:, chans] += sub[:, None]
         if x.shape[1] == 1:
             y = y[:, 0]
         peak = float(np.max(np.abs(y)))
@@ -72,7 +85,7 @@ def main(argv=None) -> Path:
     out = Path(a.out) if a.out else Path(a.input).with_name(f"{Path(a.input).stem}_{a.engine}_{a.mode}.wav")
     render.write_wav(out, y, fs)
     print(f"render_file: {a.engine}, {a.mode}, band {a.range_lo:g}-{a.range_hi:g} Hz, sub {a.sub_db:+g} dB, "
-          f"drive {a.drive:g} %, low-pass {lp:g} Hz, dry delayed {LIMITER_LOOKAHEAD_MS:g} ms -> {out}")
+          f"drive {a.drive:g} %, low-pass {lp:g} Hz -> {out}")
     return out
 
 
