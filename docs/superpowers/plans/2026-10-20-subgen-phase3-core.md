@@ -22,9 +22,9 @@
 - Python 3.13 (`proto/`, narzędzia w `tools/`).
 
 **Spec:**
-- `docs/SPEC.md` 0.2, `docs/SPEC_IO_UI.md`, `docs/SPEC_BUILD_RELEASE.md`, `docs/PARAMETERS.md`, `docs/TEST_PLAN.md`;
-- `docs/DECISIONS.md` (ADR-001…024);
-- `docs/PHASE2_REPORT.md` (wartości, Załączniki A–B);
+- `docs/SPEC.md` 0.3, `docs/SPEC_IO_UI.md`, `docs/SPEC_BUILD_RELEASE.md`, `docs/PARAMETERS.md`, `docs/TEST_PLAN.md` 0.3;
+- `docs/DECISIONS.md` (ADR-001…029);
+- `docs/PHASE2_REPORT.md` (wartości, Załączniki A–C, §11 — poprawki po przeglądzie D8);
 - implementacja wzorcowa: `proto/subgen_proto/`.
 
 **Poza zakresem:** UI, metering, presety, A/B i undo (Faza 4); testy integracyjne z hostem headless, soak, T-STAB-01/02/04, validator Steinberga T-FMT-03 (Faza 5); instalatory produkcyjne i release (Faza 6). Każda z tych faz dostanie własny plan.
@@ -53,7 +53,7 @@
 
 Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane przy konfiguracji do `.cache/cpm`, kilka MB. Obejmuje je zatwierdzenie tego planu.
 
-**Warunek przed zadaniem 4:** przetworzyć wyniki niezależnego przeglądu Fazy 2 (sesja D8). Poprawki prototypu (TDD w `proto/`) zmieniają dane złote.
+**Przegląd D8 przetworzony (2026-10-21):** poprawki prototypu (R1–R5 i Minor) są w `proto/` (251 testów, 93/93 kontroli), a ich skutki — w SPEC 0.3 i w zadaniach 6–11, 14–16, 19, 24, 25 i 30 tego planu. Dane złote eksportuje się z tego stanu prototypu.
 
 **Punkty zatrzymania:**
 - **STOP 1 (zadanie 3) — pierwszy push do publicznego repo.**
@@ -88,7 +88,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - Lookahead silnika E: Live 0, Mix 45 ms, Print 55 ms (wspólny dla wszystkich silników).
 - Lookahead kompresora: 0 / 0 / 5 ms. Lookahead limitera: 0 / 2 / 5 ms.
 - L_look = 0 / 47 / 65 ms. L_os = ceil(latencja oversamplera JUCE).
-- N_LIN = 4096·2^⌈log2(fs/48 kHz)⌉ + 1. L_lin = (N_LIN − 1)/2 + 256 (partycja konwolucji; Ruling do raportu Fazy 3).
+- N_LIN = 4096·2^⌈log2(fs/48 kHz)⌉ + 1. L_lin = (N_LIN − 1)/2 + 256 (partycja konwolucji 256 próbek, SPEC §4.4, §7.6).
 - L_total = L_os + L_look + L_lin + round(align_ms·fs/1000).
 - Latencja zależy wyłącznie od `quality`, `filt_phase` i `align_ms`.
 
@@ -98,7 +98,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 
 **Wersje i dane**
 - Wersje przypięte: JUCE 9.0.4, Catch2 v3.16.1, CPM v0.43.2, pluginval 1.0.4.
-- Dane złote w `tests/golden/` (format `.sgg`, ≤ 3 MB łącznie, deterministyczne: `export_golden.py --check`).
+- Dane złote w `tests/golden/` (format `.sgg`, ≤ 3 MB łącznie, deterministyczne: `export_golden.py --check`), eksportowane z `proto/` po przeglądzie D8. Tam, gdzie prototyp liczy offline (bramka DIVIDE w Mix/Print), wzorcem jest jego wariant przyczynowy z zadania 8.
 
 **Repozytorium i dysk**
 - Commity po angielsku `type: summary` z trailerem `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; bez pusha bez zgody (STOP 1); `main` tylko przez merge po OK.
@@ -301,7 +301,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - [ ] **Step 3: Implementacja** i eksport `signals.sgg`.
 - [ ] **Step 4: Zielono.**
   - `ctest --preset dev`;
-  - `PYTHONPATH=proto .venv/bin/python -m unittest discover -s proto/tests -t proto` (216 dotychczasowych testów + nowe);
+  - `PYTHONPATH=proto .venv/bin/python -m unittest discover -s proto/tests -t proto` (251 dotychczasowych testów + nowe);
   - `export_golden.py --check`.
 - [ ] **Step 5: Commit** `test: measurement helpers, test signals, golden-data format and allocation guard`.
 
@@ -358,7 +358,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - **Obwiednie:**
   - `class PeakFollower { void prepare(double fs, double attackMs, double releaseMs); double process(double x); void reset(); }` — jak `envelope.peak_follower`;
   - `class RmsFollower { void prepare(double fs, double tauMs); double process(double x); void reset(); }`;
-  - `class SlidingMax { void prepare(int maxWindow); void setWindow(int w); double process(double x); void reset(); }` — przyczynowe maksimum z ostatnich w próbek, kolejka monotoniczna w buforze pierścieniowym; jak `envelope.sliding_peak`;
+  - `class SlidingMax { void prepare(int maxWindow); void setWindow(int w); double process(double x); void reset(double initial = 0.0); }` — przyczynowe maksimum z ostatnich w próbek, kolejka monotoniczna w buforze pierścieniowym; próbki sprzed startu liczą się jako `initial` (limiter: −1, czyli wzmocnienie 1); jak `envelope.sliding_peak(x, w, initial)`;
   - `class SlidingMeanSquare { void prepare(int maxWindow); void setWindow(int w); double process(double x); }` — suma bieżąca, przeliczana od nowa co w próbek (bez dryfu).
 - **Wygładzanie** — wspólne API `reset(double fs, double timeMs, double value)`, `setTarget`, `next`, `current`, `isSmoothing`:
   - `LinearSmoother` (L20);
@@ -369,6 +369,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - [ ] **Step 1: Testy (czerwone)** `[envelope]`:
   - `golden followers and sliding max on a kick and xorshift noise within 1e-12`;
   - `SlidingMax equals brute force on 1e5 random samples with window changes`;
+  - `SlidingMax after reset(1.0) on zeros gives 1.0 for the first w - 1 samples, then 0.0`;
   - `SlidingMeanSquare drifts less than 1e-12 after 1e7 samples`;
   - `GainSmoother reaches its target within 20 ms (1e-3) and exactly 0.0 after Off`;
   - `DelayLine delays exactly`;
@@ -380,7 +381,8 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 ### Task 7: Wspólne elementy silników — interfejs, pasmo S3, aktywność S4, bramka pewności, obwiednia
 
 **Files:**
-- Create: `src/core/Quality.h`, `src/engines/Engine.h`, `src/engines/SourceBand.h/.cpp`, `src/engines/Activity.h/.cpp`, `src/engines/ConfidenceGate.h`, `src/engines/EnvelopeShaper.h`, `tests/unit/test_engine_common.cpp`.
+- Create: `src/core/Quality.h`, `src/engines/Engine.h`, `src/engines/SourceBand.h/.cpp`, `src/engines/Activity.h/.cpp`, `src/engines/NoteTracker.h/.cpp`, `src/engines/ConfidenceGate.h`, `src/engines/EnvelopeShaper.h`, `tests/unit/test_engine_common.cpp`, `tests/golden/notes.sgg` — czasy granic nut (detect, begin, end) dla 5 uderzeń SIG-03 przez filtr zakresu: w ciszy, z szumem pasmowym (`bandNoise`) −60 dBFS i co 0,45 s z ogonami T60 1 s; wejście test odtwarza przez `Signals` i `SourceBand`.
+- Modify: `export_golden.py` (`export_notes`).
 
 **Interfaces:**
 - **Jakość i lookahead:** `enum class Quality { Live, Mix, Print }` oraz funkcje zwracające liczbę próbek, zaokrągloną z ms·fs/1000:
@@ -403,7 +405,14 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - `e_pk`: atak 1 ms, release 50 ms; `e_rms`: 20 ms;
   - histereza 3 dB, hold 20 ms;
   - zwraca wzmocnienie wygaszania (release 20 ms).
-- **Bramka pewności:** `class ConfidenceGate { void prepare(double fs); void setGate(double confGate01); double process(double c); bool open() const; }` — otwiera przy c ≥ 0,2 + 0,6·g, zamyka poniżej tego progu − 0,2; wzmocnienie: atak 5 ms, release 50 ms.
+- **Granice nut (SPEC §5.4, R2):** `struct NoteEvent { bool start, end; double detect; std::int64_t begin; }`; `class NoteTracker { void prepare(double fs); void setThreshold(double db); NoteEvent process(double xb, bool active); void reset(); }` — semantyka `activity.note_starts` / `note_ends`, czasy w próbkach od `reset()`:
+  - start = narastające zbocze `active` albo atak: szybka obwiednia (0,2/15 ms) ≥ 12 dB ponad √2·RMS 50 ms sprzed 5 ms i ≥ √2·`det_thresh`; `detect` ułamkowe (interpolacja przecięcia);
+  - `begin` = ostatnia próbka „cicha” (szybka obwiednia ≤ 1 dB ponad to odniesienie; cyfrowa cisza jest cicha) + 1, nie później niż `detect`;
+  - blokada 50 ms wspólna dla obu rodzajów startu; koniec = opadające zbocze `active`.
+- **Bramka pewności (SPEC §6.1):** `class ConfidenceGate { void prepare(double fs); void setGate(double confGate01); double process(double c, bool provisional); bool open() const; }` — semantyka `divide.gate_states` i `apply_confidence_gate`:
+  - otwiera przy c ≥ hi = 0,2 + 0,6·g, zamyka poniżej max(hi − 0,2; hi/2);
+  - pewność tymczasowa trzyma bramkę otwartą; gdy się kończy, pierwsza prawdziwa wartość musi osiągnąć hi, inaczej bramka zamyka się z release 10 ms;
+  - wzmocnienie: atak 5 ms, release 50 ms.
 - **Obwiednia:** `class EnvelopeShaper { void prepare(double fs); void set(bool follow, double attackMs, double releaseMs, double dynamics); double process(double level, double ePeak, double eRms, bool onset); }`. Makro `dynamics` jest [F3]; początkowe odwzorowanie (Ruling, strojenie odsłuchem w Fazie 5):
   - release × 4^d;
   - atak × (1 + 3·max(0, d));
@@ -413,42 +422,70 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - [ ] **Step 1: Testy (czerwone)** `[engines-common]`:
   - `SourceBand equals the FilterCascade designs within 1e-12`;
   - `Activity opens at the threshold and closes 3 dB lower after a 20 ms hold (+-10 %)`;
-  - `ConfidenceGate hysteresis 0.2 with 5/50 ms ramps` (port testów `gate_mask`);
+  - `NoteTracker: one start per SIG-03 hit (20/20) from silence, over band noise -90 and -60 dBFS and 31 Hz hum -70 dBFS: begin within [t0 - 1 sample, t0 + 3 ms], detect - begin <= 10 ms`;
+  - `NoteTracker: hits every 0.45 s over T60 1 s tails: 20/20 starts, begin within t0 + 5 ms`;
+  - `NoteTracker: a sustained 808 note starts once; in-band noise (5 seeds, 3 s) starts <= 3 notes; after digital silence begin is the first sound +- 1 sample; ends fall between separated hits`;
+  - `NoteTracker golden: detect within 1e-6 samples, begin and ends exact`;
+  - `ConfidenceGate reproduces the gate_mask sequences for conf_gate 0, 50 and 100` (port testów `gate_mask`, D8 I1);
+  - `ConfidenceGate: a provisional opening stays open only if the first real confidence reaches hi; a rejected one releases with 10 ms`;
+  - `ConfidenceGate gain: attack 5 ms, release 50 ms (one release time constant: 0.368 +- 0.02)`;
   - `EnvelopeShaper with dynamics 0 is the plain follower`;
   - `lookahead at 48 kHz: Mix 2160, Print 2640 samples`.
 - [ ] **Step 2:** uruchomić → błąd kompilacji.
 - [ ] **Step 3:** implementacja.
-- [ ] **Step 4:** zielono; commit `feat(engines): engine interface, source band, activity and confidence gate`.
+- [ ] **Step 4:** zielono; commit `feat(engines): engine interface, source band, activity, note boundaries and confidence gate`.
 
-### Task 8: DIVIDE (T-DIV-01…07)
+### Task 8: DIVIDE (T-DIV-01…09)
 
 **Files:**
-- Create: `src/engines/Divide.h/.cpp`, `tests/unit/test_divide.cpp`, `tests/golden/divide.sgg` — sinus 55 Hz, jedno uderzenie SIG-03 i nuta SIG-04; tablice `y1`, `y2`, `f_est`, `conf`, każda ≤ 8192 próbek.
+- Create: `src/engines/Divide.h/.cpp`, `tests/unit/test_divide.cpp`, `tests/golden/divide.sgg` — sinus 55 Hz od ciszy, jedno uderzenie SIG-03, nuta SIG-04 i dwa uderzenia z końcem nuty między nimi, w Live i w Mix; tablice `y1`, `y2`, `f_est`, `conf`, `provisional` i wyjście z bramką, w oknach ≤ 8192 próbek wokół startów nut, łącznie ≤ 1 MB.
+- Modify: `proto/subgen_proto/divide.py` (+ `conf_as_known`), `proto/subgen_proto/render.py` (+ `divide_sub_causal`), `proto/tests/test_divide.py`, `proto/tests/test_render.py`, `export_golden.py` (`export_divide`).
 
 **Interfaces:**
-- `class Divide final : public Engine`, plus dla testów `double lastPeriodSamples() const` i `bool gateOpen() const`.
-- Algorytm — SPEC §6.2 (implementacja wzorcowa `proto/subgen_proto/divide.py`):
+- `class Divide final : public Engine`, plus dla testów `double lastPeriodSamples() const`, `bool gateOpen() const` i `int resetCount() const`.
+- Algorytm — SPEC §6.2 w wersji 0.3 (implementacja wzorcowa `proto/subgen_proto/divide.py`, `render.divide_sub`):
   - pętla na próbkę; θ = max(0,05·e_pk, −90 dBFS), w Live 0,03;
   - ułamkowe przejścia przez zero; s1, s2, `arm2_pending`;
+  - dzielnik pracuje tylko w nucie (`NoteTracker`, zadanie 7), poza nią jest zamrożony;
+  - reset s1 = s2 = +1, `arm2_pending`, uzbrojenia i historii okresów: po końcu nuty — przy najbliższym przejściu przez zero; na początku nuty w Mix/Print — przy ostatnim przejściu przez zero w [⌈detect⌉ − E, max(begin, detect − E)], a bez takiego przejścia — w max(begin, ⌈detect⌉ − E); w Live — przy wykryciu, z rampą 0,5 ms. Prototyp w gałęzi bez przejścia bierze ⌊max(begin, detect − E)⌋, czyli o próbkę wcześniej, gdy begin < detect − E. To gałąź rzadka (w sondach z riserem i wolnym atakiem begin wypadał 1–10 ms przed wykryciem), więc dane złote jej nie obejmują (Ruling);
   - f_est = mediana 3 okresów, potem filtr 5 Hz;
-  - pewność z trendu (mediana 5) i bramka z zadania 7;
-  - nowa nuta po przerwie > max(2,5 okresu, 40 ms), z regułą polaryzacji;
-  - wygładzanie LP4 przy 0,87·f_est z poślizgiem 5 ms; mieszanie `shape`;
+  - pewność z trendu (mediana 5; pierwsza reszta po trzech okresach); od resetu na początku nuty do pierwszej reszty pewność tymczasowa 1; bramka z zadania 7, w Mix/Print czytająca pewność E naprzód;
+  - wygładzanie LP4 przy 0,87·f_est·2^(5·shape) (Sub −2: f_est/2), najwyżej 0,45·fs, z poślizgiem 5 ms; od każdego resetu do pierwszej estymaty f_est = `range_hi`;
   - Constant przez `SlidingMax` z oknem 1,25 okresu, w granicach `range`.
+- **Dwie osie czasu (Ruling — prototyp liczy offline):**
+  - przejścia przez zero, okresy, pewność i granice nut liczy się na bieżącym `x_b`; po wykryciu startu stan wraca do punktu resetu (≥ detect − E), a przejścia od tego punktu (≤ E próbek z linii opóźniającej) przelicza się od nowa;
+  - przełączenia s1/s2, wygładzanie i Constant pracują na osi opóźnionej o E, ze zdarzeniami o bezwzględnym czasie. Późniejsze wykrycie nie zmienia zdarzeń sprzed bieżącej pozycji tej osi, więc `y1`, `y2` i `f_est` są równe tablicom `divide.divide`;
+  - bramka w Mix/Print czyta pewność z osi bieżącej, czyli taką, jaką wtyczka zna w chwili odczytu. Prototyp offline zna pewność tymczasową już w oknie [punkt resetu, wykrycie) przed każdą nutą. Dlatego wzorcem wyjścia z bramką jest `render.divide_sub_causal`. W Live oba wzorce są równe.
+- **Wzorzec przyczynowy (Python):**
+  - `divide.conf_as_known(x_b, fs, *, live, lookahead_s, thresh_db=-55.0) -> tuple[np.ndarray, np.ndarray]` — pewność i flaga tymczasowa znane w chwili t. Starty nut przetwarza się od ostatniego do pierwszego: próbki [m − E, m), gdzie m = ⌈detect⌉, pochodzą z `divide` na `x_b[:m]`;
+  - `render.divide_sub_causal(x_b, fs, *, shape_pct=0.0, conf_gate_pct=50.0, quality="mix")` — `divide_sub` z bramką czytającą `conf_as_known`.
 
-- [ ] **Step 1: Testy (czerwone)** `[divide]`:
+- [ ] **Step 1: Wzorzec przyczynowy (TDD w `proto/`).** Testy (czerwone):
+  - `test_conf_as_known_equals_offline_outside_the_windows_before_detections`;
+  - `test_conf_as_known_equals_offline_in_live`;
+  - `test_divide_sub_causal_keeps_the_kick_onset` (T-DIV-08: ≥ 50 % w Mix i Print).
+
+  Potem implementacja, zielony pakiet Pythona i eksport `divide.sgg`.
+- [ ] **Step 2: Testy C++ (czerwone)** `[divide]`:
   - `T-DIV-01 Sub-1 and Sub-2 frequency within 0.1 % (30-200 Hz at 44.1/48/96 kHz)`;
   - `T-DIV-02 3f/2 <= -18 dB with shape 0`;
-  - `T-DIV-03 100 SIG-03 hits: polarity 100/100, waveform correlation >= 0.99`;
+  - `T-DIV-03 default output (shape 0, gate), Mix and Live: 20 SIG-03 hits in silence, over band noise -90/-80/-70/-60 dBFS and 31 Hz hum -70 dBFS: first-lobe sign 20/20, waveform correlation >= 0.99`;
+  - `T-DIV-03 hits every 0.45 and 0.5 s over T60 1 s tails: native Sub-1 first lobe 20/20, output hits 1..19 share one sign; Live: the sign is consistent from 1 ms after each reset`;
+  - `T-DIV-03 a sustained 808 note is not reset inside; 40 kicks -24..-3 dBFS: native polarity 40/40, correlation >= 0.99`;
   - `T-DIV-04 in-band SNR 10 dB: period error < 2 %; at 3 dB the gate is open <= 10 % of the time`;
-  - `T-DIV-05 chord <= source - 40 dB after 100 ms; in-band noise: gate open <= 3 %, sub >= 12 dB below the noise`;
+  - `T-DIV-05 chord from silence, Live and Mix: <= source - 40 dB after 100 ms; in-band noise: gate open <= 3 %, sub >= 12 dB below the noise`;
   - `T-DIV-06 shape 100: step <= the input step, energy above 2 kHz <= -60 dB re peak`;
   - `T-DIV-07 Constant -12 dBFS +- 0.5 dB for -40..-6 dBFS inputs; Follow proportional`;
-  - `golden equivalence within 1e-9`;
-  - Review Focus 3: `clipped square, DC offset and an onset at the waveform peak still divide and never produce NaN`, `-90 dBFS stays silent, full scale stays finite`.
-- [ ] **Step 2:** uruchomić → błąd kompilacji.
-- [ ] **Step 3:** implementacja.
-- [ ] **Step 4:** zielono; commit `feat(engines): DIVIDE octave divider`.
+  - `T-DIV-08 first 40 ms of a SIG-03 hit: gated sub energy >= 50 % of the ungated (Live, Mix, Print); Mix: gate gain at the first lobe 0.99-1.01, Live < 0.9`;
+  - `T-DIV-09 shape 25/50/75/100 % on a 55 Hz sine: f/2 level within +-0.5 dB of shape 0; shape 100: 3f/2 to f/2 ratio within +-1 dB of the native`;
+  - `confidence is provisionally 1 from the note start (55 Hz sine: conf >= 0.5 from 2 ms on)`;
+  - `each note starts the smoothing low-pass from 0.87 range_hi`;
+  - `a -85 dBFS sine is not divided at det_thresh -55 dBFS but is at -90 dBFS; below the -90 dBFS arming floor nothing is divided`;
+  - `golden: y1, y2, f_est, conf and provisional within 1e-9 of divide.divide (Live, Mix); the gated output within 1e-9 of render.divide_sub_causal`;
+  - Review Focus 3: `clipped square, DC offset and an onset at the waveform peak still divide and never produce NaN`, `+12 dBFS stays finite and divides`.
+- [ ] **Step 3:** uruchomić → błąd kompilacji.
+- [ ] **Step 4:** implementacja.
+- [ ] **Step 5:** zielono; commit `feat(engines): DIVIDE octave divider with note boundaries and a causal gate`.
 
 ### Task 9: Detektor wysokości MPM i prior (T-TRK-01)
 
@@ -470,6 +507,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - [ ] **Step 1: Testy (czerwone)** `[pitch]`:
   - `T-TRK-01 SIG-01/04/05: median error <= 0.5 % and 0 octave errors (conf >= 0.5 and |err| > 600 cents) at 44.1 and 48 kHz`;
   - `44.1 kHz decimates by 22 (fs_d = 2004.545 Hz)`;
+  - `decimation is causal: silence before a note stays exactly 0 after the anti-alias filter` (D8 M13);
   - `confidence reaches 0.5 within 2 periods + 4 ms of a note after silence (30-120 Hz)`;
   - `band-limited pink noise has median confidence <= 0.1`;
   - `a lone outlier cannot seed the track; an octave jump needs 3 agreeing frames`;
@@ -504,7 +542,8 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - `T-TRK-04 Locked steady-state phase error <= 15 deg rms, clean and at in-band SNR 10 dB`;
   - `triangle aliasing < -90 dB for f <= 100 Hz at 44.1 kHz`;
   - `Fixed mode is a gated drone at base_freq`;
-  - `amplitude is not read ahead: the sub does not start before the note`.
+  - `amplitude is not read ahead: the sub does not start before the note`;
+  - `no pitch before the first valid frame: the oscillator stays silent until the first estimate` (D8 M13).
 - [ ] **Step 2:** uruchomić → błąd kompilacji.
 - [ ] **Step 3:** implementacja.
 - [ ] **Step 4:** zielono; commit `feat(engines): TRACK oscillator with PLL phase lock and lookahead`.
@@ -521,9 +560,9 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - interpolacja przecięcia progu.
 - **Silnik:** `class Trigger final : public Engine` — wzory SPEC §6.4:
   - faza w postaci zamkniętej (całka wykładniczego glissanda);
-  - atak liniowy, potem T60;
+  - atak liniowy t_a = max(`trig_attack`, 0,5 ms), potem T60 (SPEC §6.4);
   - prędkość `clamp((peak/0,5)^vel, 0, 1,5)`, peak `x_b` w 20 ms po onsecie;
-  - Follow znormalizowany;
+  - Follow: `e_rms` (20 ms) przez bieżące maksimum od onsetu (przyczynowo), z tolerancją 1 dB, potem tylko malejące;
   - Restart z crossfade 3 ms; Legato przenosi fazę i amplitudę;
   - Sub −2 = f/2;
   - klucz z `key` przy `keyMode == Trigger`;
@@ -535,7 +574,8 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - `T-TRIG-01 SIG-03: onset error <= 1 sample (Mix/Print) and <= 2 ms (Live), no double triggers, constant bias -0.486 +- 0.05 sample`;
   - `T-TRIG-02 hits 1..99 identical within -120 dB; block sizes {1, 7, 64, 512} give identical output`;
   - `T-TRIG-03 time-domain f(t) within 0.5 % and A(t) within 0.1 dB of the formulas`;
-  - `T-TRIG-04 Restart click (max 2nd difference in +-1 ms) <= 1e-3; Legato carries phase and amplitude within 1e-12`;
+  - `T-TRIG-04 Restart click (max 2nd difference in +-1 ms) <= 1e-3; Legato carries phase and amplitude within 1e-12; attack 0 at a 90 deg start phase: max step <= 0.06`;
+  - `Follow is causal: a prefix of the input gives the same prefix of the output (1e-12)`;
   - `TRACK Reset: phase 0 +- 1 deg at the onset`;
   - Review Focus: `hits closer than the lockout trigger once`, `overlapping retriggers stay finite without clicks`;
   - `golden voice within 1e-9`.
@@ -592,7 +632,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 ### Task 14: Drive/Saturate — kształty, ADAA, oversampling JUCE, Auto Gain (T-DRV-01…05, T-ALIAS-01)
 
 **Files:**
-- Create: `src/chain/DriveShapes.h`, `src/chain/AutoGainTable.h/.cpp`, `src/chain/Drive.h/.cpp`, `tests/unit/test_drive.cpp`, `tests/golden/drive.sgg` — poziomy harmonicznych wzorca 16× (5 charakterów × drive 25/50/100 %, 55 Hz, −12 dBFS) i wybrane G_c z Załącznika A.
+- Create: `src/chain/DriveShapes.h`, `src/chain/AutoGainTable.h/.cpp`, `src/chain/Drive.h/.cpp`, `tests/unit/test_drive.cpp`, `tests/golden/drive.sgg` — poziomy harmonicznych wzorca 16× (5 charakterów × drive 25/50/100 %, 55 Hz, −12 dBFS; Fold także przy +6 dBFS) i wybrane G_c z Załącznika A.
 
 **Interfaces:**
 - **Kształty** (SPEC §7.3; `b_mode` Tube 0,35; bias addytywny):
@@ -609,6 +649,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
     - `RMS_AC² = ½·Σ|c_k|²·|T(k·f_sub1)|²`, gdzie `T = (1 − α) + α·H_tone` (dokładnie dla dyskretnego LP 2. rzędu).
 - **Stopień:** `class Drive { void prepare(double fs, int maxBlock, Quality q); void setParams(const DriveParams&); void process(std::span<double>); int latencySamples() const; }`:
   - pre-gain 30 dB·drive/100; odniesienie 12 dB; α = min(1, drive/5);
+  - Fold (SPEC §7.3, R3): wejście nieliniowości `g·x_ref` mnożone przez min(1, 2,0/env), env = `SlidingMax` |x_ref| w oknie max(10 ms, 1,5/f_sub1), potem release 50 ms (wzrost natychmiastowy); do −6 dBFS bit w bit bez zmian;
   - ADAA1 z tolerancją 1e-5;
   - Tone `(1 − α)·y + α·LP(y)`; HP 5 Hz po stopniu;
   - `juce::dsp::Oversampling<double>`: Mix 2× `filterHalfBandPolyphaseIIR`, Print 4× `filterHalfBandFIREquiripple`, max quality — oba przygotowane w `prepare`;
@@ -621,7 +662,8 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - `T-DRV-03 Auto Gain within +-0.5 dB: all modes, drive 5-100 %, balance -100/0/100, Tone 60/500/2000 Hz at f_sub1 30/60/120 Hz`;
   - `T-DRV-04 DC after the 5 Hz high-pass <= -80 dBFS`;
   - `T-DRV-05 drive 0 is bit-exact (delayed by the latency); alpha continuity <= 1e-2 relative per 0.1 % step`;
-  - `T-ALIAS-01 31/81/121 Hz, Hard and Fold, drive 25/50/100 %, 44.1 and 48 kHz: non-harmonic power below 500 Hz <= -80 dB (Live) and <= -90 dB (Mix, Print)` — wartości pełnopasmowe idą do dziennika;
+  - `T-ALIAS-01 31/81/121 Hz, all five modes, drive 25/50/100 %, inputs -6/0/+6/+12 dBFS, 44.1 and 48 kHz: non-harmonic power below 500 Hz <= -80 dB (Live) and <= -90 dB (Mix, Print)` — wartości pełnopasmowe idą do dziennika;
+  - `Fold up to -6 dBFS is bit-identical to the uncapped fold`;
   - `AutoGainTable is computed once and process() does not allocate`;
   - `Tube at balance -100 has b_eff 0.85`.
 - [ ] **Step 2:** uruchomić → błąd kompilacji.
@@ -636,10 +678,11 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 **Interfaces:**
 - **Detektor:** `enum class Detector { Peak, Rms }`; `class LevelDetector { void prepare(double fs, int maxWindow); void set(Detector, double fSub1Hz); double processDb(double x); }`:
   - okno w = max(10 ms, 1,5/f_sub1), przy f_sub1 ≥ 20 Hz;
-  - RMS: średnia kwadratowa w oknie, potem hold w tym samym oknie;
-  - Peak: hold |x| w oknie.
+  - Peak (domyślny, SPEC §7.4, R4): hold |x| w oknie;
+  - RMS: średnia kwadratowa w oknie, potem hold w tym samym oknie.
 - **Kompresor:** `struct CompParams { bool on; double threshDb, ratio, kneeDb, attackMs, releaseMs; bool autoRelease; Detector detector; double makeupDb; bool autoMakeup; double fSub1Hz; }`; `class Compressor { void prepare(double fs, int maxBlock, Quality q); void setParams(const CompParams&); void process(std::span<double>); double gainReductionDb() const; int latencySamples() const; }`:
   - krzywa statyczna z kolanem; wygładzanie GR w dB;
+  - przy detektorze RMS atak efektywny = max(`comp_attack`, 0,25·T_sub) (R4);
   - auto release = głębsza z dwóch gałęzi: (atak, 50 ms) i (150 ms, 500 ms);
   - auto makeup `0,5·|T|·(1 − 1/R)` [F3];
   - lookahead 5 ms w Print; crossfade on/off 10 ms.
@@ -651,6 +694,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - [ ] **Step 1: Testy (czerwone)** `[dynamics]`:
   - `T-CMP-01 static curve and knee within 0.1 dB`;
   - `T-CMP-02 THD at 6 dB GR <= -60 dB for RMS and Peak (30/40/60/100 Hz x attack 0.1-100 ms x release 10-1000 ms)`;
+  - `T-CMP-02 onset: 40 Hz -6 dBFS after silence, threshold -30 dB, ratio 4 (GR 0 -> ~18 dB), energy above 100 Hz in the first 80 ms (Hann): Peak at attack 0.1/1/3 ms <= -50 dB; RMS at 1 ms <= -40 dB and equal to RMS at 6.25 ms`;
   - `T-CMP-03 attack and release 63 % times within 10 % with the detector window added to the release; auto release after 0.05/0.5/3 s of reduction = 64/498/514 ms +- 10 %`;
   - `T-GATE-01 threshold, hold, release and hysteresis within 10 %, no chatter at threshold +- 1 dB`;
   - `off is bit-exact`;
@@ -668,7 +712,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - `struct LimiterParams { bool on; double ceilingDb, releaseMs; bool truePeak; }`.
 - `class Limiter { void prepare(double fs, int maxBlock, Quality q); void setParams(const LimiterParams&); void process(std::span<double>); int latencySamples() const; double gainReductionDb() const; }`:
   - Live: `c·tanh(x/c)` z ADAA;
-  - Mix/Print — SPEC §7.8: D = round(lookahead·fs); minimum wymaganego wzmocnienia w oknie D + 1 (`SlidingMax` na −g); release jednobiegunowy; FIR Hanna o długości D + 1; wejście opóźnione o D;
+  - Mix/Print — SPEC §7.8: D = round(lookahead·fs); minimum wymaganego wzmocnienia w oknie D + 1 (`SlidingMax` na −g, po resecie wypełniony −1, czyli wzmocnieniem 1); release jednobiegunowy; FIR Hanna o długości D + 1; wejście opóźnione o D;
   - `lim_tp` (Print): wymagane wzmocnienie z próbek nadpróbkowanych 4× (FIR).
 
 - [ ] **Step 1: Testy (czerwone)** `[limiter]`:
@@ -676,6 +720,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - `T-LIM-01 true peak (Print, lim_tp): 4x-oversampled peak <= ceiling + 0.01 dB with the same interpolator`;
   - `T-LIM-02 40 Hz, 6 dB over, release 100 ms: THD Mix <= -35 dB, Print <= -50 dB`;
   - `latency is exactly round(lookahead fs)`;
+  - `a 40 Hz sine below the ceiling passes unchanged from its first sample after reset (within 1e-15, delayed by D)`;
   - `off is bit-exact`;
   - `golden gain trajectory within 1e-9`.
 - [ ] **Step 2:** uruchomić → błąd kompilacji.
@@ -745,9 +790,8 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - jądro projektowane w wątku roboczym;
   - przekazanie przez wstępnie zaalokowane sloty i atomowy indeks;
   - podmiana z crossfade 40 ms.
-- **Rulings do raportu Fazy 3:**
-  - L_lin = (N_LIN − 1)/2 + 256 — do uzupełnienia w SPEC §4.4;
-  - automatyzacja LP w trybie Linear Phase nie jest deterministyczna, bo jądro podmienia się asynchronicznie.
+- L_lin = (N_LIN − 1)/2 + 256 — SPEC 0.3 §4.4, §7.6.
+- **Ruling do raportu Fazy 3:** automatyzacja LP w trybie Linear Phase nie jest deterministyczna, bo jądro podmienia się asynchronicznie.
 
 - [ ] **Step 1: Testy (czerwone)** `[linear-phase]`:
   - `T-FILT-06 kernel symmetric exactly`;
@@ -905,6 +949,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 - [ ] **Step 1: Testy (czerwone)** `[autoalign]`:
   - `T-PHS-03 48 synthetic optima found within 15 deg`;
   - `no overlap gives confidence < 0.5 dB (no clear optimum)`;
+  - `silent capture: polarity +1, rotation 0, confidence 0 dB, no NaN` (D8 M6);
   - `SIG-18: the 15 deg grid is within 0.5 dB of a 1 deg search`;
   - `canonical form and the tie rule`;
   - `golden SIG-18 results (polarity, rotation)`.
@@ -927,7 +972,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
   - dry przez `DelayLine` o L_total;
   - bypass z crossfade 10 ms.
 - **Latencja:** `struct LatencyBreakdown { int os, look, lin, align, total; }`; `LatencyBreakdown computeLatency(Quality, bool linearPhase, double alignMs, double fs, int osLatency)`. Zmiana `quality`, `filt_phase` lub `align_ms` → `setLatencySamples` z wątku wiadomości (listener) oraz wyciszenie 40 ms w wątku audio.
-- **Akcja Auto `align_ms`:** `double estimatedSubDelayMs() const` (pasmo źródłowe + filtry toru sub + gałąź A przy f_sub1) i `void applyAutoAlignMs()` (zaokrąglenie do 0,1 ms, ograniczenie 0–40 ms; T-ALN-01).
+- **Akcja Auto `align_ms`:** `double estimatedSubDelayMs() const` (SPEC §9.2: pasmo źródłowe przy częstotliwości źródła — DIVIDE, TRACK: 2·f_sub1, HARMONIC: f0, TRIGGER: pomijane — oraz filtry toru sub i gałąź A przy f_sub1) i `void applyAutoAlignMs()` (zaokrąglenie do 0,1 ms, ograniczenie 0–40 ms; T-ALN-01).
 - **Ostrzeżenia:** `Warnings` — atomowy zestaw bitów W-01…W-12 z logiką SPEC_IO_UI §7.4 (bez UI).
 
 - [ ] **Step 1: Testy (czerwone)** `[processor]`.
@@ -941,7 +986,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
     - `T-INV-01 block sizes {1, 7, 32, 64, 127, 128, 512, 4096, random} within -130 dB`;
     - `T-INV-02 44.1-192 kHz: frequency ratios and latency in ms +- 1 sample`;
     - `T-INV-04 two runs are bit-identical`;
-    - `T-ALN-01 Auto align_ms equals the analytic sub-path group delay at f_sub1 +- 0.1 ms, clamped to 0-40 ms`.
+    - `T-ALN-01 Auto align_ms equals the analytic sub-path group delay (SPEC §9.2 chain) +- 0.1 ms, clamped to 0-40 ms; default chain at f_sub1 30/40/50/80 Hz: 34.8/24.1/19.8/12.2 ms`.
   - Real-time:
     - `T-RT-01 no allocations in processBlock after prepare`;
     - `T-RT-02 denormal ramp: no NaN, CPU within +20 %`.
@@ -1054,14 +1099,14 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 
 **Files:**
 - Create: `docs/PHASE3_REPORT.md`.
-- Modify: `docs/DECISIONS.md` (sekcja E: proponowane ADR-025+), `CHANGELOG.md`, `docs/TEST_REPORT.md`.
+- Modify: `docs/DECISIONS.md` (sekcja F: proponowane ADR-030+), `CHANGELOG.md`, `docs/TEST_REPORT.md`.
 
 - [ ] **Step 1: Raport** (po polsku):
   - tabela testów TEST_PLAN dotkniętych w Fazie 3: ID → wartość → PASS/FAIL;
   - spike'i SPK-1…6 z werdyktem;
   - zmierzone latencje: L_os z JUCE dla 44,1–192 kHz i L_total;
   - CPU; status CI z linkami do przebiegów;
-  - Rulings i odchylenia od SPEC jako propozycje korekt: L_lin + 256, odwzorowanie `dynamics` i `trk_speed`, reguła pasma PLL, tabela Auto Gain, `subgen_dsp` jako INTERFACE;
+  - Rulings i odchylenia od SPEC jako propozycje korekt: dwie osie czasu DIVIDE i bramka czytająca pewność znaną w chwili odczytu, odwzorowanie `dynamics` i `trk_speed`, reguła pasma PLL, tabela Auto Gain, `subgen_dsp` jako INTERFACE;
   - ryzyka i lista rzeczy niezweryfikowanych.
 - [ ] **Step 2: Przegląd całej gałęzi** — niezależna sesja tylko do odczytu (jak D8), jeśli użytkownik się zgodzi; inaczej autoprzegląd z wpisem w dzienniku.
 - [ ] **Step 3: Commit** `docs: phase 3 report`; aktualizacja pamięci projektu.
@@ -1108,8 +1153,9 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 |---|---|---|
 | `Quality` | 7 | 13–21, 25 |
 | `EngineControl` | 7 | 8–13 |
+| `NoteTracker` / `ConfidenceGate` | 7 | 8 (bramka także 10) |
 | `FilterFamily` / `designFilter` | 5 | 7, 18, 19 |
-| `SlidingMax` | 6 | 8, 12, 15, 16 |
+| `SlidingMax` | 6 | 8, 12, 14, 15, 16 |
 | `RealFft` | 4 | 19, 24 |
 | `PitchMpm` | 9 | 10, 11 |
 | `OnsetDetector` | 11 | domyka Reset z 10 |
@@ -1120,5 +1166,7 @@ Nowe, małe zależności: Catch2 v3.16.1 i CPM v0.43.2 — źródła pobierane p
 | `CaptureBuffer` / `autoAlign` | 24 | 26 |
 
 **Review Focus:** pozycje 1–5 mają testy w zadaniach 25 (wszystkie) oraz 8 i 13 (pozycje 2–3).
+
+**Po przeglądzie D8 (2026-10-21):** zadania 6–11, 14–16, 19, 24, 25 i 30 zaktualizowane do SPEC 0.3. Nowe testy C++ przenoszą testy prototypu z poprawek D8; zadanie 8 dostało przyczynowy wzorzec bramki.
 
 **Proporcja:** plan zawiera sygnatury, nazwy testów z wartościami ze SPEC i decyzje, których wykonawca nie podejmie sam (latencje, siatka Auto Gain, format danych złotych, kolejność toru). Ciała funkcji są pominięte, bo prototyp `proto/` jest implementacją wzorcową.
