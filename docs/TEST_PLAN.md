@@ -1,6 +1,6 @@
 # SUB-GEN — TEST PLAN (Faza 1)
 
-Wersja dokumentu: 0.2 (korekty z Fazy 2: PHASE2_REPORT §6) · Data: 2026-10-20 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [SPEC_BUILD_RELEASE.md](SPEC_BUILD_RELEASE.md), [PARAMETERS.md](PARAMETERS.md)
+Wersja dokumentu: 0.3 (korekty z Fazy 2: PHASE2_REPORT §6; po przeglądzie D8: §11) · Data: 2026-10-21 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [SPEC_BUILD_RELEASE.md](SPEC_BUILD_RELEASE.md), [PARAMETERS.md](PARAMETERS.md)
 Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynikiem, wersją i datą.
 
 ## 1. Zasady
@@ -51,10 +51,12 @@ Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynik
 |---|---|---|---|---|
 | T-DIV-01 | SPEC §6.2 | SIG-01 przez Divide (Add, wet only): częstotliwość Sub −1 i Sub −2 (FFT z interpolacją, po 5 cyklach) | f/2 i f/4 z błędem ≤ 0,1% | U · CI |
 | T-DIV-02 | SPEC §6.2 | czystość: shape = 0, składowa 3f/2 względem Sub −1 | ≤ −18 dB (P2: −23,4 dB) | U · CI |
-| T-DIV-03 | SPEC §6.2 | reguła polaryzacji: SIG-03; znak pierwszego płatu suba vs źródła; korelacja przebiegu suba między uderzeniami | zgodność znaku 100/100; korelacja ≥ 0,99 | U · CI |
+| T-DIV-03 | SPEC §6.2 | reguła polaryzacji na wyjściu domyślnym (shape 0, bramka), Mix i Live: SIG-03 (20 uderzeń) w ciszy, z szumem 30–120 Hz −90…−60 dBFS RMS i z buczeniem 31 Hz −70 dBFS; oraz nakładające się ogony (T60 1 s co 0,45 i 0,5 s) | oddzielone uderzenia: zgodność znaku pierwszego płatu 20/20, korelacja przebiegów ≥ 0,99; ogony: natywny sub 20/20, wyjście spójne między uderzeniami (P2: 20/20, 0,9995) | U · CI |
 | T-DIV-04 | SPEC §6.2 | SIG-19: dodatkowe przełączenia i błąd okresu | błąd okresu < 2 % dla SNR ≥ 10 dB; przy SNR 3 dB bramka otwarta ≤ 10 % czasu (P2: 4 %) | U · CI |
-| T-DIV-05 | SPEC §6.1 | SIG-06 (akord) i losowy szum 30–120 Hz (SIG-07 po filtrze zakresu): bramka pewności | akord: poziom suba ≤ źródło − 40 dB po 100 ms (`conf_gate` = 50); szum: bramka otwarta ≤ 3 % czasu, poziom suba ≥ 12 dB poniżej szumu (P2: 0–2 %, ≥ 15 dB) | U · CI |
+| T-DIV-05 | SPEC §6.1 | SIG-06 (akord, od ciszy, Live i Mix) i losowy szum 30–120 Hz (SIG-07 po filtrze zakresu): bramka pewności; także `conf_gate` 0 % i 100 % (szum po nucie) | akord: poziom suba ≤ źródło − 40 dB po 100 ms (`conf_gate` = 50; P2: −76 dB Live, −116 dB Mix); szum: bramka otwarta ≤ 3 % czasu, poziom suba ≥ 12 dB poniżej szumu (P2: 0–2 %, ≥ 15 dB); przy 0 % i 100 % bramka zamyka się w szumie | U · CI |
 | T-DIV-06 | SPEC §6.2 | ciągłość przy przełączeniach (shape = 100): skok międzypróbkowy i widmo HF | skok ≤ 1 próbka kroku sygnału; energia > 2 kHz ≤ −60 dB względem szczytu | U · CI |
+| T-DIV-08 | SPEC §6.1, §6.2 | początek nuty przez bramkę: SIG-03 przez filtr zakresu, Live, Mix, Print | energia suba w pierwszych 40 ms ≥ 50 % energii bez bramki (P2: 94 / 95,5 / 95,5 %; wersja 0.2: 0,5 %) | U · CI |
+| T-DIV-09 | SPEC §6.2 | `shape` 0…100 % na sinusie 55 Hz | poziom składowej f/2 stały ± 0,5 dB (P2: 0,05 dB); shape 100 %: stosunek 3f/2 do f/2 w ± 1 dB od natywnego | U · CI |
 | T-DIV-07 | SPEC §6.1 | Follow/Constant: poziom suba dla SIG-01 −40…−6 dBFS | Constant −12 dBFS ± 0,5 dB; Follow ∝ źródło | U · CI |
 | T-TRK-01 | SPEC §6.3 | SIG-01, SIG-04, SIG-05: dokładność f0 i błędy oktawowe | błąd ≤ 0,5%; 0 błędów oktawowych | U · CI |
 | T-TRK-02 | SPEC §6.3 | glissando 80 → 40 Hz w 200 ms: opóźnienie śledzenia | ≤ 50 ms przy W = 83,5 ms (`range_lo` = 30 Hz; P2: 43 ms ≈ W/2 + 1 ms) | U · CI |
@@ -63,7 +65,7 @@ Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynik
 | T-TRIG-01 | SPEC §6.4 | SIG-03: czas wykrycia onsetu, podwójne wyzwolenia | Mix/Print: ≤ 1 próbka; Live: ≤ 2 ms; 0 podwójnych | U · CI |
 | T-TRIG-02 | SPEC §6.4 | determinizm: 100 identycznych uderzeń (porównanie uderzeń 1–99; uderzenie 0 nie ma ogona poprzednika); różne rozmiary bloków | różnica głosów ≤ −120 dB (P2: −211 dB) | U · CI |
 | T-TRIG-03 | SPEC §6.4 | f(t) i A(t) vs wzory, mierzone w dziedzinie czasu: połowy okresu między przejściami przez zero (f) i próbki szczytowe (A) — sygnał analityczny myli się dla zanikającego chirpa o 3–8 % i 0,3–0,7 dB | błąd częstotliwości ≤ 0,5 %; amplitudy ≤ 0,1 dB (P2: 0,0002 % / 0,023 dB) | U · CI |
-| T-TRIG-04 | SPEC §6.4 | Restart: maksymalna druga różnica w oknie ±1 ms wokół retriggera; Legato: przeniesienie fazy i amplitudy | Restart ≤ 1e-3 pełnej skali (P2: 4,3·10⁻⁴); Legato: faza i amplituda przeniesione dokładnie (≤ 1e-12) | U · CI |
+| T-TRIG-04 | SPEC §6.4 | Restart: maksymalna druga różnica w oknie ±1 ms wokół retriggera; Legato: przeniesienie fazy i amplitudy; atak 0 przy fazie 90° | Restart ≤ 1e-3 pełnej skali (P2: 4,3·10⁻⁴); Legato: faza i amplituda przeniesione dokładnie (≤ 1e-12); atak 0 / faza 90°: skok ≤ 0,06 pełnej skali (efektywny atak 0,5 ms) | U · CI |
 | T-HARM-01 | SPEC §6.5 | sinus 1,0 → wagi harmonicznych vs `w_k`; DC po czyszczeniu | błąd ≤ 0,5 dB; DC ≤ −80 dBFS (P2: 0,017 dB; −248 dBFS) | U · CI |
 | T-HARM-02 | SPEC §6.5 | SIG-17: produkty intermodulacyjne | raport (informacyjnie; P2: 72 % mocy wyjścia to intermodulacja, najsilniejsza linia f1 + f2) | U · L |
 | T-HYB-01 | SPEC §6.6 | Hybrid = suma niezależnych silników | null ≤ −120 dB | U · CI |
@@ -78,9 +80,9 @@ Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynik
 | T-DRV-04 | SPEC §7.3 | DC po Drive asymetrycznym i po filtrze 5 Hz | ≤ −80 dBFS | U · CI |
 | T-DRV-05 | SPEC §7.3 | `drive` = 0 tożsamość; ciągłość wtapiania α | bit-exact (double); ciągłość α: zmiana wyjścia proporcjonalna do kroku parametru, ≤ 1·10⁻² względnie na krok 0,1 % `drive` (P2: 4,2–7,2·10⁻³, liniowo z krokiem) | U · CI |
 | T-DRV-06 | SPEC §7.3, SPEC_IO_UI §4 | tryb LFE: harmoniczne powyżej `lfe_lp_freq` | tłumienie zgodne z nachyleniem LPF | U · CI |
-| T-ALIAS-01 | SPEC §4.5 | tony 31, 81, 121 Hz (−6 dBFS; 30/80/120 Hz przy 48 kHz są „ślepe”) przez Drive Hard/Fold przy drive 25/50/100 %, fs 44,1 i 48 kHz; moc składowych nieharmonicznych względem całości | w paśmie toru sub (< 500 Hz): ≤ −90 dB (Mix, Print), ≤ −80 dB (Live) (P2: −143,5 / −163,6 / −129 dB); pełnopasmowo informacyjnie (P2, Hard 100 %: Live −55, Mix −77, Print −95 dB) | U · CI |
+| T-ALIAS-01 | SPEC §4.5 | tony 31, 81, 121 Hz (30/80/120 Hz przy 48 kHz są „ślepe”) przez Drive we wszystkich trybach przy drive 25/50/100 %, wejścia −6, 0, +6, +12 dBFS (`sub_level` stoi przed Drive), fs 44,1 i 48 kHz; moc składowych nieharmonicznych względem całości | w paśmie toru sub (< 500 Hz): ≤ −90 dB (Mix, Print), ≤ −80 dB (Live) (P2 po R3: −93,2 / −93,2 / −90,2 dB); pełnopasmowo informacyjnie (P2, Hard 100 %, −6 dBFS: Live −55, Mix −77, Print −95 dB) | U · CI |
 | T-CMP-01 | SPEC §7.4 | krzywa statyczna vs wzór, ciągłość kolana | ≤ 0,1 dB | U · CI |
-| T-CMP-02 | SPEC §7.4 | THD dodane przez kompresor dla sinusów 30–100 Hz przy GR 6 dB | ≤ −60 dB dla detektorów RMS i Peak z SPEC §7.4 przy dowolnych czasach (atak 0,1–100 ms, release 10–1000 ms; P2: −124 dB) | U · CI |
+| T-CMP-02 | SPEC §7.4 | THD dodane przez kompresor dla sinusów 30–100 Hz przy GR 6 dB | ≤ −60 dB dla detektorów RMS i Peak z SPEC §7.4 przy dowolnych czasach (atak 0,1–100 ms, release 10–1000 ms; P2: −124 dB); na onsecie (ton 40 Hz, GR 0 → 18 dB, energia > 100 Hz w pierwszych 80 ms): Peak przy ataku ≤ 3 ms ≤ −50 dB, RMS ≤ −40 dB (P2: −50,4 / −42,1 dB) | U · CI |
 | T-CMP-03 | SPEC §7.4 | dokładność ataku/release (czas do 63 %; okno detektora dodaje się do release) | ≤ 10% | U · CI |
 | T-GATE-01 | SPEC §7.5 | próg, hold, release, histereza | dokładność 10%; brak trzepotania na progu | U · CI |
 | T-LIM-01 | SPEC §7.8 | szczyt nie przekracza sufitu (sygnały stresowe, SIG-12) | \|y\| ≤ sufit + 1e-9 (P2: 3·10⁻¹⁶); true-peak ≤ sufit (Print) | U · CI |
@@ -103,7 +105,7 @@ Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynik
 | T-SUM-05 | SPEC §9.1 | `out_trim` = 0 dB | bit-exact | U · CI |
 | T-LAT-01 | SPEC §4.4 | impuls (SIG-09): opóźnienie dry; początek suba | dry = L_total dokładnie; sub ± 1 próbka względem L_sub (dla zdarzeń Trigger) | I · CI |
 | T-LAT-02 | SPEC §4.4 | stałość latencji względem silnika, Drive, Comp, EQ oraz `sub_lp_freq`/`sub_lp_slope` przy Linear Phase | bez zmian | I · CI |
-| T-ALN-01 | SPEC §9.2 | akcja Auto dla `f_sub1` ∈ {30, 40, 50, 80 Hz} i kilku ustawień pasma, filtrów i rotacji | `align_ms` = analityczne opóźnienie grupowe toru sub ± 0,1 ms, ograniczone do 0–40 ms | U · CI |
+| T-ALN-01 | SPEC §9.2 | akcja Auto dla `f_sub1` ∈ {30, 40, 50, 80 Hz} i kilku ustawień pasma, filtrów i rotacji | `align_ms` = analityczne opóźnienie grupowe toru sub (pasmo źródłowe przy częstotliwości źródła + filtry toru sub + gałąź A, SPEC §9.2) ± 0,1 ms, ograniczone do 0–40 ms | U · CI |
 | T-INV-01 | SPEC §4.3 | rozmiary bloków {1, 7, 32, 64, 127, 128, 512, 4096, losowe} | różnica ≤ −130 dB (cel: bit-exact bez ścieżek FFT) | I · CI |
 | T-INV-02 | SPEC §3 | fs ∈ {44,1; 48; 88,2; 96; 176,4; 192 kHz} | stosunki częstotliwości i faz spójne; latencja w ms ± 1 próbka | I · CI |
 | T-INV-03 | SPEC §3 | render offline (`setNonRealtime`) vs czas rzeczywisty | identyczny wynik | I · CI |
