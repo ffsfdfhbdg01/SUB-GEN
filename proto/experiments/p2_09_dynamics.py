@@ -43,8 +43,8 @@ def main():
     for rule in (False, True):
         rec.check(f"T-CMP-02: THD <= -60 dB at GR 6 dB, recommended 'rms' detector, rule {'on' if rule else 'off'} (whole map)",
                   max(v for k, v in thd.items() if k[0] == "rms" and k[1] == rule), "<=", -60.0, "dB")
-    rec.check("T-CMP-02: SPEC-literal one-pole style detector with the rule (whole map; fails)",
-              max(v for k, v in thd.items() if k[0] == "rms_onepole" and k[1]), "<=", -60.0, "dB")
+    rec.info("T-CMP-02 with the SPEC 0.1 one-pole detector and the ripple rule (whole map) [dB] (SPEC-literal; replaced by the "
+             "ripple-free detectors in SPEC 0.2)", round(max(v for k, v in thd.items() if k[0] == "rms_onepole" and k[1]), 1))
 
     # off-frequency: the window is tuned to f_sub1 = 40 Hz
     off = {}
@@ -76,7 +76,12 @@ def main():
             spec = np.abs(np.fft.rfft(seg, 2 ** 16)) ** 2
             fq = np.fft.rfftfreq(2 ** 16, 1.0 / FS)
             sweep[f"{det}, attack {a:g} ms"] = round(10 * np.log10(np.sum(spec[fq > 100.0]) / np.sum(spec)), 1)
-    rec.info("onset splatter vs attack (no rule; 6.25 ms = the rule's floor at 40 Hz) [dB re total]", sweep)
+    rec.info("onset splatter vs attack (no ripple rule; 'rms' keeps its own floor of 0.25 T_sub = 6.25 ms at 40 Hz, R4) "
+             "[dB re total]", sweep)
+    rec.check("T-CMP-02 onset (R4): Peak, attack <= 3 ms, energy above 100 Hz in the first 80 ms",
+              max(v for k, v in sweep.items() if k.startswith("peak") and float(k.split()[2]) <= 3.0), "<=", -50.0, "dB")
+    rec.check("T-CMP-02 onset (R4): RMS (attack floor 0.25 T_sub), any attack",
+              max(v for k, v in sweep.items() if k.startswith("rms")), "<=", -40.0, "dB")
 
     # ---------------------------------------------------------------- 3. limiter (T-LIM-01, T-LIM-02)
     c_db = -1.0
@@ -112,9 +117,10 @@ def main():
     rec.info("T-GATE-01: hold 40 ms / release 120 ms measured (after the 15 ms detector window) [ms]", (round(hold_meas, 2), round(rel_meas, 2)))
     rec.check("T-GATE-01: hold and release within 10 %", max(abs(hold_meas / 40.0 - 1), abs(rel_meas / 120.0 - 1)) * 100.0, "<=", 10.0, "%")
 
-    rec.info("recommendation", "detect = mean square over max(10 ms, 1.5 T_sub) followed by a hold over the same window (or a peak hold): "
-             "the steady-state gain no longer ripples, so THD stays below -60 dB for any attack/release; keep the ripple rule "
-             "(attack >= 0.25 T, release >= 1.0 T) as a floor against splatter at onsets")
+    rec.info("recommendation (R4, after the independent review D8)",
+             "default detector Peak = hold of |x| over max(10 ms, 1.5 T_sub): steady state ripple-free (THD -124 dB at any "
+             "attack/release) and the least onset splatter (-56 dB at 1 ms); RMS = mean square over the same window followed "
+             "by a hold, with an attack floor of 0.25 T_sub (onset -42 dB); no ripple rule otherwise")
 
     # ---------------------------------------------------------------- plots
     fig, ax = plt.subplots(2, 3, figsize=(16, 8.5))

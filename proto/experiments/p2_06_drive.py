@@ -56,15 +56,31 @@ def main():
     rec.info("Hard: worst aliasing by drive % (3 tones x 2 sample rates) [dB re total]", per_drive)
     rec.info("Fold: worst aliasing over all cells [dB] (FM-like output, bandwidth ~ (beta + 1) f0: no aliasing at these tones)",
              {c: round(max(v[c] for k, v in table.items() if k[2] == "fold"), 1) for c in CONFIGS})
-    # The SPEC targets as written (T-ALIAS-01 [P2]): Live -80, Mix -90, Print -90. Hard at high drive misses the first two.
+    # The SPEC 0.1 full-band targets (Live -80, Mix -90, Print -90): Hard at high drive misses the first two. Since D2
+    # (SPEC 0.2) they are informational; the criterion is the sub band below.
+    rec.info("T-ALIAS-01 full band, SPEC 0.1 targets (informational since D2): worst over all cells [dB] vs target",
+             {c: (round(max(v[c] for v in table.values()), 1), thr) for c, thr in TARGET.items()})
+    # in-band view (D2 criterion): only what lands below a 500 Hz sub low-pass survives the rest of the chain. R3 / D8 I2:
+    # sub_level (up to +18 dB) sits before the Drive, so inputs up to +12 dBFS are covered, at both sample rates.
+    grid = {}
+    for fs in (44100, 48000):
+        for level in (-6.0, 0.0, 6.0, 12.0):
+            for f in TONES:
+                x = tone(f, fs, level=level)
+                for m in drive.MODES:
+                    for c in TARGET:
+                        grid[(fs, level, f, m, c)] = drive.nonharmonic_db(x, fs, f, drive_pct=100.0, mode=m, f_hi=500.0,
+                                                                          **CONFIGS[c], **KW)
+    by_level = {c: {f"{lv:+g} dBFS": round(max(v for k, v in grid.items() if k[4] == c and k[1] == lv), 1)
+                    for lv in (-6.0, 0.0, 6.0, 12.0)} for c in TARGET}
+    by_mode = {c: {m: round(max(v for k, v in grid.items() if k[4] == c and k[3] == m), 1) for m in drive.MODES} for c in TARGET}
+    by_fs = {c: {fs: round(max(v for k, v in grid.items() if k[4] == c and k[0] == fs), 1) for fs in (44100, 48000)} for c in TARGET}
+    rec.info("sub band (< 500 Hz), drive 100 %, all modes and tones: worst by input level [dB re total]", by_level)
+    rec.info("sub band (< 500 Hz), drive 100 %, inputs -6..+12 dBFS: worst by mode [dB re total]", by_mode)
+    rec.info("sub band (< 500 Hz), drive 100 %, inputs -6..+12 dBFS: worst by sample rate [dB re total]", by_fs)
     for c, thr in TARGET.items():
-        rec.check(f"T-ALIAS-01 SPEC target, {c}: worst over all cells", max(v[c] for v in table.values()), "<=", thr, "dB")
-    # in-band view: only what lands below a 500 Hz sub low-pass survives the rest of the chain
-    sub = {}
-    for c, p in CONFIGS.items():
-        sub[c] = round(max(drive.nonharmonic_db(tone(f, FS), FS, f, drive_pct=100.0, mode=m, f_hi=500.0, **p, **KW)
-                           for f in TONES for m in ("hard", "fold")), 1)
-    rec.info("aliasing that lands below 500 Hz (sub band), worst over tones/hard+fold at drive 100 %, 48 kHz [dB re total]", sub)
+        rec.check(f"T-ALIAS-01 (D2) sub band, {c}: worst over modes, tones, fs and inputs -6..+12 dBFS",
+                  max(v for k, v in grid.items() if k[4] == c), "<=", thr, "dB")
 
     # ---------------------------------------------------------------- 2. metrics compared (Hard, 100 %, 81 Hz)
     x = tone(81.0, FS, level=-12.0)

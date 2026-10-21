@@ -80,7 +80,8 @@ def main():
     dry = delay(bus, d)
     written += render.write_ab(OUT, "uc3_bus", dry, {"divide_comp": dry + div_c, "hybrid": dry + hyb}, FS)
     notes["uc3"] = f"align {1000 * d / FS:.1f} ms, sub compressor GR median {np.median(gr[gr < -0.1]) if np.any(gr < -0.1) else 0.0:.1f} dB"
-    rec.check("UC3: with the sub off the output is the input (bit-exact)", float(not np.array_equal(dry + 0.0 * div_c, dry)), "==", 0.0)
+    rec.info("UC3: sub-off identity", "not testable here (dry + 0 * sub == dry holds for any array, D8 I5.1); the plug-in's "
+             "sub-off path is tested in C++ (T-SUM-01)")
 
     # ---------------------------------------------------------------- UC4: impact (TRIGGER + Drive)
     hit = np.zeros(2 * FS)
@@ -121,7 +122,9 @@ All files: WAV, 24-bit, {FS} Hz. Synthetic test material (SPEC signals SIG-03/04
 A = dry. B = dry + sub, matched to the A file's A-weighted loudness: B is NOT louder, so listen for weight, depth,
 tightness and pitch, not for level. W = the sub alone (normalised to -6 dBFS peak).
 The dry is delayed by the source band filter's group delay at the material's fundamental (what align_ms does in the
-plug-in), so the sub is not late. Listen on full-range monitors or headphones that reach 30 Hz; a phone speaker will
+plug-in), so the sub is not late. Re-rendered after the independent review (D8): DIVIDE now keeps the start of every
+note (its confidence gate muted the first ~40 ms of a kick before) and resets its polarity at every note start; the
+sub compressor (UC3) uses the Peak detector. Listen on full-range monitors or headphones that reach 30 Hz; a phone speaker will
 only reveal the HARMONIC variants.
 
 UC1 kick, 8 hits ({notes['uc1']})
@@ -133,7 +136,8 @@ UC2 808 line E1 G1 A1 C2 D2 ({notes['uc2_808']}) and plucked bass E1 A1 D2 G2 ({
   uc2_808_* and uc2_bass_*: A_dry, B_divide, B_track, W_divide, W_track
   Listen for: the sub following the 808 glides, a clean sine, no octave jumps. DIVIDE follows instantly (half the
   frequency, waveform-locked); TRACK is a pure oscillator at f0/2 read 45 ms ahead (Mix) - smooth, but it settles
-  only after the window catches up with fast glides.
+  only after the window catches up with fast glides. Note: TRACK here runs free (phase_gen Free), not in the
+  default Locked mode (PLL), so its phase against the dry is not the plug-in's default.
 
 UC3 bus: kick + bass + noise pad ({notes['uc3']})
   uc3_bus_A_dry, _B_divide_comp (DIVIDE + sub compressor), _B_hybrid (+ HARMONIC 50 %, audible on small speakers)

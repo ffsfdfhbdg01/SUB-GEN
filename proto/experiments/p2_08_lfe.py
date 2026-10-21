@@ -121,8 +121,8 @@ def main():
     rec.info("HP 20 Hz + LP 120 Hz (BW4 each): shortest kernel within 0.1 dB over 25-2000 Hz", fir)
     n48 = fir[48000][f"beta {lfe.DEFAULT_BETA:g}"]["min taps"]
     rec.check("linear phase HP 20 + LP 120 at 48 kHz fits the SPEC's 16384 taps (beta 3)", n48, "<=", 16384)
-    rec.check("T-FILT-06 with the SPEC's beta 8 at 16384 taps, 48 kHz: amplitude error (SPEC-literal; fails)",
-              lfe.fir_error_db(lfe.linear_phase_fir(target(FS), FS, 16384, beta=8.0), target(FS), FS), "<=", 0.1, "dB")
+    rec.info("T-FILT-06 with the SPEC 0.1 beta 8 at 16384 taps, 48 kHz: amplitude error [dB] (SPEC-literal; beta 3 since SPEC 0.2)",
+             round(lfe.fir_error_db(lfe.linear_phase_fir(target(FS), FS, 16384, beta=8.0), target(FS), FS), 3))
     rec.check("T-FILT-06 with beta 3 at 16384 taps, 48 kHz: amplitude error",
               lfe.fir_error_db(lfe.linear_phase_fir(target(FS), FS, 16384), target(FS), FS), "<=", 0.1, "dB")
     rec.info("SPEC limit of 32768 taps at 192 kHz (beta 3 needs)", fir[192000][f"beta {lfe.DEFAULT_BETA:g}"]["min taps"])
@@ -141,6 +141,45 @@ def main():
                          "error beta 8 [dB]": round(lfe.fir_error_db(lfe.linear_phase_fir(target(fs), fs, n_rule, beta=8.0), target(fs), fs), 3),
                          "error beta 3 [dB]": round(lfe.fir_error_db(lfe.linear_phase_fir(target(fs), fs, n_rule), target(fs), fs), 3)}
     rec.info("the SPEC's length rule for a 20 Hz corner: amplitude error 25-2000 Hz", spec_rule)
+
+    # 3b. Linear Phase for the low-pass only (D5, SPEC 0.2 §7.6; D8 M3): a fixed kernel N_LIN per sample rate, so the
+    #     latency does not depend on sub_lp_freq. Accuracy: 0.1 dB from 5 Hz down to the -60 dB point of the target.
+    def n_lin(fs):
+        return 4096 * 2 ** int(np.ceil(np.log2(fs / 48000.0) - 1e-12)) + 1
+
+    def lp_only(fam, order, fc, fs):
+        secs = {"BW": svf.design_butter, "LR": svf.design_lr, "Bessel": svf.design_bessel}[fam](order, fc, fs, "low")
+        return lambda f: np.maximum(np.abs(svf.freqz(secs, f, fs)), 1e-15)
+
+    def band(tgt, fc, fs):
+        grid = np.geomspace(fc, fs / 2.5, 4000)
+        return 5.0, float(grid[np.argmax(20.0 * np.log10(tgt(grid)) <= -60.0)])
+
+    designs = [("BW", 2), ("BW", 4), ("BW", 8), ("BW", 16), ("LR", 4), ("LR", 8), ("LR", 16), ("Bessel", 2), ("Bessel", 4), ("Bessel", 8)]
+    names = {("BW", 2): "BW 12", ("BW", 4): "BW 24", ("BW", 8): "BW 48", ("BW", 16): "BW 96", ("LR", 4): "LR 24",
+             ("LR", 8): "LR 48", ("LR", 16): "LR 96", ("Bessel", 2): "Bessel 12", ("Bessel", 4): "Bessel 24", ("Bessel", 8): "Bessel 48"}
+    lp_taps, lp_err = {}, {}
+    for fam, order in designs:
+        taps_row, err_row = {}, {}
+        for fc in (30.0, 60.0, 80.0, 120.0, 140.0):
+            tgt = lp_only(fam, order, fc, FS)
+            fb = band(tgt, fc, FS)
+            taps_row[f"{fc:g} Hz"] = lfe.min_taps(tgt, FS, f_check=fb, n_max=1 << 19)
+            err_row[f"{fc:g} Hz"] = round(lfe.fir_error_db(lfe.linear_phase_fir(tgt, FS, n_lin(FS)), tgt, FS, fb), 2)
+        lp_taps[names[(fam, order)]], lp_err[names[(fam, order)]] = taps_row, err_row
+    rec.info("LP only, 48 kHz: shortest kernel for 0.1 dB (5 Hz .. -60 dB point) by design and corner", lp_taps)
+    rec.info(f"LP only, 48 kHz: error at N_LIN = {n_lin(FS)} taps [dB] by design and corner", lp_err)
+    lat = {fs: {"N_LIN": n_lin(fs), "(N_LIN - 1)/2 [ms]": round(1000.0 * (n_lin(fs) - 1) / 2.0 / fs, 1),
+                "+ 256-sample partition [ms]": round(1000.0 * ((n_lin(fs) - 1) / 2.0 + 256) / fs, 1)} for fs in (44100, 48000, 88200, 96000, 176400, 192000)}
+    rec.info("N_LIN = 4096 * 2^ceil(log2(fs / 48 kHz)) + 1 and its latency", lat)
+    defaults = {}
+    for fs in (44100, 48000, 96000, 192000):
+        for label, fc in (("LFE LP BW 24 @ 120 Hz", 120.0), ("sub LP BW 24 @ 140 Hz", 140.0)):
+            tgt = lp_only("BW", 4, fc, fs)
+            defaults[f"{fs} | {label}"] = lfe.fir_error_db(lfe.linear_phase_fir(tgt, fs, n_lin(fs)), tgt, fs, band(tgt, fc, fs))
+    rec.info("default low-passes at N_LIN: error [dB]", {k: round(v, 3) for k, v in defaults.items()})
+    rec.check("Linear Phase LP at N_LIN: the default low-passes (BW 24 at 120 / 140 Hz) within 0.1 dB, all fs",
+              max(defaults.values()), "<=", 0.1, "dB")
 
     # |H|^2 against |H|
     t_amp = target(FS)

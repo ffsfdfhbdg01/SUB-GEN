@@ -115,6 +115,23 @@ def main():
             rec.check("MPM SIG-01/04/05: signals that never lock", unlocked, "==", 0)
         else:
             rec.info("YIN SIG-01/04/05: worst median error [cents] / octave errors / never locked", (worst, octs, unlocked))
+    # 1b. D8 M10: frames > 600 cents off as the oscillator uses them, without the fitted lag: Mix reads the track 45 ms
+    #     ahead (log), Live holds the last frame. These are glide-tracking errors, not a wrong octave choice.
+    rt = {}
+    for label, kw, ahead in (("Mix (45 ms ahead)", dict(lookahead_s=0.045, interp="log"), 0.045), ("Live (hold)", dict(interp="hold"), 0.0)):
+        n_bad, worst, n_all = 0, 0.0, 0
+        for x, truth, _ in classes["SIG-04 808"]:
+            trk = track.mpm(x, FS, f_min=FMIN)
+            f_used = track.f0_per_sample(trk, len(x), FS, **kw)
+            conf_used = np.interp(np.arange(len(x)) / FS + ahead, trk.t, trk.conf)
+            idx = np.clip(np.round(trk.t * FS).astype(int), 0, len(x) - 1)
+            ok = (conf_used[idx] >= 0.5) & np.isfinite(f_used[idx])
+            err = np.abs(1200.0 * np.log2(f_used[idx][ok] / truth(trk.t[ok])))
+            n_bad += int(np.sum(err > 600.0))
+            n_all += int(np.sum(ok))
+            worst = max(worst, float(np.max(err, initial=0.0)))
+        rt[label] = {"frames > 600 cents (20 notes)": n_bad, "frames evaluated": n_all, "worst [cents]": round(worst, 1)}
+    rec.info("SIG-04 808, MPM as the oscillator uses it (no lag fitted): frames > 600 cents and the worst error", rt)
     core = [table[(c, "PLL")] for c in ("SIG-01 sines", "SIG-04 808", "SIG-05 pluck")]
     rec.info("PLL (seeded with the true f at the onset) SIG-01/04/05: worst median error [cents] / frames > 600 cents / never locked",
              (max(a["worst_cents_median"] for a in core), sum(a["octave_errors"] for a in core),
