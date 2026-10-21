@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set(CPM_SOURCE_CACHE "${PROJECT_SOURCE_DIR}/.cache/cpm" CACHE PATH "CPM download cache")
+include(CPM)
+CPMAddPackage(NAME Catch2 GITHUB_REPOSITORY catchorg/Catch2 GIT_TAG v3.16.1 SYSTEM YES)
+list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
+include(Catch)
+
+# Tests of the plug-in layer (processor, parameters, state) link the plug-in's shared code; all others link
+# subgen_dsp only.
+set(plugin_test_names test_smoke test_params test_processor test_layouts test_state)
+file(GLOB unit_tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/unit/test_*.cpp")
+set(dsp_test_sources)
+set(plugin_test_sources)
+foreach(file IN LISTS unit_tests)
+    get_filename_component(name "${file}" NAME_WE)
+    if(name IN_LIST plugin_test_names)
+        list(APPEND plugin_test_sources "${file}")
+    else()
+        list(APPEND dsp_test_sources "${file}")
+    endif()
+endforeach()
+
+add_executable(subgen_dsp_tests ${dsp_test_sources})
+target_link_libraries(subgen_dsp_tests PRIVATE subgen_dsp Catch2::Catch2WithMain juce::juce_recommended_config_flags)
+subgen_strict_warnings(subgen_dsp_tests)
+catch_discover_tests(subgen_dsp_tests)
+
+# Like JUCE's own plug-in wrappers: link the shared-code static library and re-export its include directories (its
+# public compile definitions, JucePlugin_* and the module flags, come with the link).
+add_executable(subgen_plugin_tests ${plugin_test_sources})
+target_include_directories(subgen_plugin_tests PRIVATE $<TARGET_PROPERTY:SubGen,INCLUDE_DIRECTORIES>)
+target_link_libraries(subgen_plugin_tests PRIVATE SubGen Catch2::Catch2WithMain)
+subgen_strict_warnings(subgen_plugin_tests)
+catch_discover_tests(subgen_plugin_tests)

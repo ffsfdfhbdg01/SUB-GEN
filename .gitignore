@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 proto/out/
 renders/
+build/
+.cache/
+tools/bin/
