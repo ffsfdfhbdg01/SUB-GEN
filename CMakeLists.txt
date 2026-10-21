@@ -12,7 +12,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 option(SUBGEN_AAX "Also build the AAX format (manual CI job only)" OFF)
 option(SUBGEN_BUILD_TESTS "Build the unit tests" ON)
-set(SUBGEN_SANITIZE "" CACHE STRING "Sanitizers for the asan/tsan presets: address,undefined or thread")
+option(SUBGEN_BUILD_PLUGIN "Build the plug-in (OFF: subgen_dsp and its tests only, e.g. the Linux RTSan job)" ON)
+set(SUBGEN_SANITIZE "" CACHE STRING "Sanitizers: address,undefined (asan), thread (tsan) or realtime (Linux CI)")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ProductIdentity)
@@ -37,35 +38,37 @@ target_include_directories(subgen_dsp INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src
 target_compile_definitions(subgen_dsp INTERFACE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0) # no network (SPEC §3)
 target_link_libraries(subgen_dsp INTERFACE juce::juce_core juce::juce_audio_basics juce::juce_dsp)
 
-set(subgen_formats VST3 AU Standalone)
-if(SUBGEN_AAX)
-    list(APPEND subgen_formats AAX)
-endif()
+if(SUBGEN_BUILD_PLUGIN)
+    set(subgen_formats VST3 AU Standalone)
+    if(SUBGEN_AAX)
+        list(APPEND subgen_formats AAX)
+    endif()
 
-juce_add_plugin(SubGen
-    PRODUCT_NAME "${SUBGEN_PRODUCT_NAME}"
-    COMPANY_NAME "${SUBGEN_VENDOR}"
-    BUNDLE_ID "${SUBGEN_BUNDLE_ID}"
-    PLUGIN_MANUFACTURER_CODE "${SUBGEN_MANUFACTURER_CODE}"
-    PLUGIN_CODE "${SUBGEN_PLUGIN_CODE}"
-    VERSION "${SUBGEN_VERSION}"
-    FORMATS ${subgen_formats}
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    AU_MAIN_TYPE kAudioUnitType_Effect
-    VST3_CATEGORIES Fx
-    COPY_PLUGIN_AFTER_BUILD TRUE)
+    juce_add_plugin(SubGen
+        PRODUCT_NAME "${SUBGEN_PRODUCT_NAME}"
+        COMPANY_NAME "${SUBGEN_VENDOR}"
+        BUNDLE_ID "${SUBGEN_BUNDLE_ID}"
+        PLUGIN_MANUFACTURER_CODE "${SUBGEN_MANUFACTURER_CODE}"
+        PLUGIN_CODE "${SUBGEN_PLUGIN_CODE}"
+        VERSION "${SUBGEN_VERSION}"
+        FORMATS ${subgen_formats}
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        AU_MAIN_TYPE kAudioUnitType_Effect
+        VST3_CATEGORIES Fx
+        COPY_PLUGIN_AFTER_BUILD TRUE)
 
-file(GLOB_RECURSE subgen_plugin_sources CONFIGURE_DEPENDS src/params/*.cpp src/plugin/*.cpp)
-if(subgen_plugin_sources)
-    target_sources(SubGen PRIVATE ${subgen_plugin_sources})
+    file(GLOB_RECURSE subgen_plugin_sources CONFIGURE_DEPENDS src/params/*.cpp src/plugin/*.cpp)
+    if(subgen_plugin_sources)
+        target_sources(SubGen PRIVATE ${subgen_plugin_sources})
+    endif()
+    target_compile_definitions(SubGen PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+    target_link_libraries(SubGen
+        PRIVATE subgen_dsp juce::juce_audio_utils
+        PUBLIC juce::juce_recommended_config_flags)
+    subgen_strict_warnings(SubGen)
 endif()
-target_compile_definitions(SubGen PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
-target_link_libraries(SubGen
-    PRIVATE subgen_dsp juce::juce_audio_utils
-    PUBLIC juce::juce_recommended_config_flags)
-subgen_strict_warnings(SubGen)
 
 if(SUBGEN_BUILD_TESTS)
     enable_testing()

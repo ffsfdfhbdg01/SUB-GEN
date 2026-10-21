@@ -27,11 +27,13 @@ catch_discover_tests(subgen_dsp_tests)
 
 # Like JUCE's own plug-in wrappers: link the shared-code static library and re-export its include directories (its
 # public compile definitions, JucePlugin_* and the module flags, come with the link).
-add_executable(subgen_plugin_tests ${plugin_test_sources})
-target_include_directories(subgen_plugin_tests PRIVATE $<TARGET_PROPERTY:SubGen,INCLUDE_DIRECTORIES>)
-target_link_libraries(subgen_plugin_tests PRIVATE SubGen Catch2::Catch2WithMain)
-subgen_strict_warnings(subgen_plugin_tests)
-catch_discover_tests(subgen_plugin_tests)
+if(SUBGEN_BUILD_PLUGIN)
+    add_executable(subgen_plugin_tests ${plugin_test_sources})
+    target_include_directories(subgen_plugin_tests PRIVATE $<TARGET_PROPERTY:SubGen,INCLUDE_DIRECTORIES>)
+    target_link_libraries(subgen_plugin_tests PRIVATE SubGen Catch2::Catch2WithMain)
+    subgen_strict_warnings(subgen_plugin_tests)
+    catch_discover_tests(subgen_plugin_tests)
+endif()
 
 # Documentation consistency (SPEC_BUILD_RELEASE §11): parameter registry, identifiers and test IDs.
 find_package(Python3 COMPONENTS Interpreter)
