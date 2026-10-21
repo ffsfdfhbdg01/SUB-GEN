@@ -13,7 +13,7 @@ the ripple rule floors them at 0.25 T_sub and 1.0 T_sub.
 from __future__ import annotations
 
 import numpy as np
-from scipy import ndimage, signal as sps
+from scipy import signal as sps
 
 from . import drive, envelope
 
@@ -147,7 +147,7 @@ def limiter(x, fs: float, *, ceiling_db: float, lookahead_ms: float, release_ms:
     d = int(round(lookahead_ms * 1e-3 * fs))
     ax = np.abs(x)
     r = np.where(ax > c, c / np.maximum(ax, 1e-300), 1.0)
-    h = ndimage.minimum_filter1d(r, size=d + 1, origin=d // 2) if d > 0 else r
+    h = -envelope.sliding_peak(-r, d + 1, initial=-1.0) if d > 0 else r  # causal min; gain 1 before the start
     a_rel = 1.0 - np.exp(-1.0 / (release_ms * 1e-3 * fs))
     e = np.empty_like(h)
     g = 1.0

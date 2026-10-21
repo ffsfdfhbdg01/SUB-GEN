@@ -46,6 +46,21 @@ class TestSlidingPeak(unittest.TestCase):
         x = np.random.default_rng(0).standard_normal(50)
         np.testing.assert_array_equal(envelope.sliding_peak(x, 1), x)
 
+    def test_causal_at_the_start_of_the_buffer(self):
+        # D8 M1: an impulse inside the first w - 1 samples must not show up before it happens (no reflection).
+        x = np.zeros(20)
+        x[5] = 1.0
+        y = envelope.sliding_peak(x, 8)
+        self.assertTrue(np.all(y[:5] == 0.0))
+        self.assertTrue(np.all(y[5:13] == 1.0))
+        self.assertTrue(np.all(y[13:] == 0.0))
+
+    def test_initial_value_counts_before_the_start(self):
+        # samples before the buffer count as `initial` (the limiter's held gain starts at 1)
+        y = envelope.sliding_peak(np.zeros(10), 4, initial=1.0)
+        self.assertTrue(np.all(y[:3] == 1.0))
+        self.assertTrue(np.all(y[3:] == 0.0))
+
 
 class TestRmsFollower(unittest.TestCase):
     def test_rms_of_sine_is_amplitude_over_sqrt2(self):

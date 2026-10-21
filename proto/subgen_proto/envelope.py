@@ -26,6 +26,7 @@ def rms_follower(x, fs: float, tau_ms: float) -> np.ndarray:
     return np.sqrt(sps.lfilter([a], [1.0, -(1.0 - a)], x * x))
 
 
-def sliding_peak(x, window: int) -> np.ndarray:
-    """Causal running maximum: y[n] = max(x[n - window + 1 .. n]) (zero-padded before the start)."""
-    return ndimage.maximum_filter1d(np.asarray(x, dtype=np.float64), size=window, origin=(window - 1) // 2)
+def sliding_peak(x, window: int, initial: float = 0.0) -> np.ndarray:
+    """Causal running maximum: y[n] = max(x[n - window + 1 .. n]); samples before the start count as `initial`."""
+    return ndimage.maximum_filter1d(np.asarray(x, dtype=np.float64), size=window, origin=(window - 1) // 2,
+                                    mode="constant", cval=initial)

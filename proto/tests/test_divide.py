@@ -81,6 +81,15 @@ class TestRobustness(unittest.TestCase):
         expected = [False, False, True, True, True, True, False, False, False, True, True]
         self.assertEqual(divide.gate_mask(conf, 50.0).tolist(), expected)
 
+    def test_gate_mask_closes_at_conf_gate_0_and_100(self):
+        # D8 I1: closing threshold max(hi - 0.2, 0.5 hi): conf_gate 0 -> opens 0.2, closes below 0.1 (was 0: never);
+        # conf_gate 100 -> opens 0.8, closes below 0.6; conf_gate 50 unchanged (0.5 / 0.3).
+        self.assertEqual(divide.gate_mask([0.0, 0.9, 0.9, 0.05, 0.0, 0.0], 0.0).tolist(),
+                         [False, True, True, False, False, False])
+        self.assertEqual(divide.gate_mask([0.0, 0.15, 0.2, 0.12, 0.09], 0.0).tolist(),
+                         [False, False, True, True, False])
+        self.assertEqual(divide.gate_mask([0.79, 0.8, 0.61, 0.59], 100.0).tolist(), [False, True, True, False])
+
     def test_gate_stays_open_through_kick_pitch_drop(self):
         # SIG-03 kick: the period grows 19.7, 20.2, 19.1, 16.1, 11.7 % per cycle (hand-measured on the crossings), but
         # deviates only 0-3.7 % from the linear period trend. A smooth glide is not polyphony.

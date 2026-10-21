@@ -199,9 +199,10 @@ def shape_blend(y_native, y_smooth, shape_pct: float) -> np.ndarray:
 
 
 def gate_mask(conf, conf_gate_pct: float) -> np.ndarray:
-    """Gate decision with hysteresis: opens at conf >= 0.2 + 0.6*conf_gate/100, closes below that minus 0.2."""
+    """Gate decision with hysteresis: opens at conf >= hi = 0.2 + 0.6*conf_gate/100, closes below
+    max(hi - 0.2, hi / 2) (so conf_gate 0 still closes, below 0.1)."""
     hi = 0.2 + 0.6 * conf_gate_pct / 100.0
-    lo = hi - 0.2
+    lo = max(hi - 0.2, 0.5 * hi)
     conf = np.asarray(conf, dtype=np.float64)
     if conf.size == 0:
         return np.zeros(0, dtype=bool)
