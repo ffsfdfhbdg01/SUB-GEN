@@ -32,3 +32,10 @@ target_include_directories(subgen_plugin_tests PRIVATE $<TARGET_PROPERTY:SubGen,
 target_link_libraries(subgen_plugin_tests PRIVATE SubGen Catch2::Catch2WithMain)
 subgen_strict_warnings(subgen_plugin_tests)
 catch_discover_tests(subgen_plugin_tests)
+
+# Documentation consistency (SPEC_BUILD_RELEASE §11): parameter registry, identifiers and test IDs.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME check_docs
+        COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/check_docs.py" --docs "${PROJECT_SOURCE_DIR}/docs")
+endif()
