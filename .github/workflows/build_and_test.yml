@@ -128,11 +128,15 @@ jobs:
         with:
           submodules: true
           fetch-depth: 1
-      - name: clang 20 from the signed apt.llvm.org repository (key checked by fingerprint)
+      - name: clang 20 from the signed apt.llvm.org repository (key file pinned by SHA-256, one key, known fingerprint)
         run: |
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o llvm.asc
+          echo "8b2a587ffd672c4687e7581dad4b2f6c1bb2ad6b480cd9771ba2ff48e0b8c75d  llvm.asc" | sha256sum -c -
+          primaries=$(gpg --show-keys --with-colons llvm.asc | awk -F: '/^pub:/ {c++} END {print c+0}')
           fpr=$(gpg --show-keys --with-colons llvm.asc | awk -F: '/^fpr:/ {print $10; exit}')
-          if [ "$fpr" != 6084F3CF814B57C1CF12EFD515CF4D18AF4F7421 ]; then echo "unexpected LLVM key: $fpr"; exit 1; fi
+          if [ "$primaries" != 1 ] || [ "$fpr" != 6084F3CF814B57C1CF12EFD515CF4D18AF4F7421 ]; then
+            echo "unexpected LLVM key file: $primaries primary keys, first fingerprint $fpr"; exit 1
+          fi
           sudo install -m 0644 llvm.asc /etc/apt/keyrings/apt.llvm.org.asc
           echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
             | sudo tee /etc/apt/sources.list.d/llvm-20.list
