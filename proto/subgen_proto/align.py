@@ -43,11 +43,10 @@ def auto_align(dry, sub, fs: float, band, objective: str = "energy", step_deg: f
         keep = (np.fft.rfftfreq(len(dry), 1.0 / fs) >= band[0]) & (np.fft.rfftfreq(len(dry), 1.0 / fs) <= band[1])
         d_, r_, i_ = (np.fft.rfft(w * v)[keep] for v in (dry, re, im))
         value = np.array([np.sum(np.abs(d_ + c[k] * r_ - s[k] * i_) ** 2) for k in range(n_psi)])
-        db = lambda v: 10.0 * np.log10(v)
-        score = db(value)  # larger is better
+        score = 10.0 * np.log10(np.maximum(value, 1e-300))  # larger is better; silence: all equal (D8 M6)
     else:
         value = np.array([np.max(np.abs(dry + c[k] * re - s[k] * im)) for k in range(n_psi)])
-        score = -20.0 * np.log10(value)
+        score = -20.0 * np.log10(np.maximum(value, 1e-300))
     ok = np.flatnonzero(score >= np.max(score) - TIE_DB)
     k = ok[np.argmin(np.abs(_wrap(psi[ok])) + 1e-9 * (_wrap(psi[ok]) < 0))]  # nearest the identity, + before -
     psi_c = float(_wrap(psi[k]))

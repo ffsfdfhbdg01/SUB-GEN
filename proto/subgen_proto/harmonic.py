@@ -38,6 +38,8 @@ def harmonic(x_b, fs: float, *, amount_pct: float = 50.0, balance: float = 0.0, 
              rel_ms: float = 60.0, e_floor_db: float = -80.0, f_lo: float = 30.0) -> np.ndarray:
     """Harmonics 2..k_max of the source band, scaled by its envelope (the fundamental is not included)."""
     x = np.asarray(x_b, dtype=np.float64)
+    if x.size == 0:
+        return x.copy()
     e = amplitude_envelope(x, fs, f_lo=f_lo, att_ms=att_ms, rel_ms=rel_ms)
     xn = np.clip(x / np.maximum(e, 10.0 ** (e_floor_db / 20.0)), -1.0, 1.0)
     return svf.process_fast(svf.design_butter(HP_ORDER, HP_HZ, fs, "high"), e * chebyshev_sum(xn, amount_pct, balance, k_max))

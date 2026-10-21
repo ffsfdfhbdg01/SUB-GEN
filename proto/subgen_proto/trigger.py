@@ -21,6 +21,12 @@ PEAK_WINDOW_MS = 20.0              # peak of x_b after the onset that sets the v
 CROSSFADE_MS = 3.0                 # Restart: old voice fades out over this time
 RMS_TAU_MS = 20.0                  # Follow: e_rms (SPEC §5.4)
 DEFAULTS = dict(f_start=80.0, f_end=45.0, tau_p_ms=30.0, attack_ms=2.0, t60_ms=350.0, phase0_deg=0.0)
+MIN_ATTACK_MS = 0.5                # D8 M5: attack 0 with a start phase off 0/180 degrees would step by the amplitude
+FOLLOW_TOL_DB = 1.0                # Follow: the gain falls once e is this far below its running maximum (RMS ripple)
+
+
+def _attack_s(prm) -> float:
+    return max(prm["attack_ms"], MIN_ATTACK_MS) * 1e-3
 
 
 def detect_onsets(x, fs, *, thresh_db: float = -30.0, hold_ms: float = 20.0, lockout_ms: float = 60.0):
@@ -61,7 +67,7 @@ def _envelope(s, t_a, t60, a0, a1):
 def _segment(s, prm, phi1, phi2, a0, v):
     """Both subs at voice times s >= 0, starting phases phi1 / phi2 and amplitude a0 -> v."""
     inc = _phase_inc(s, prm["f_start"], prm["f_end"], prm["tau_p_ms"] * 1e-3)
-    env = _envelope(s, prm["attack_ms"] * 1e-3, prm["t60_ms"] * 1e-3, a0, v)
+    env = _envelope(s, _attack_s(prm), prm["t60_ms"] * 1e-3, a0, v)
     return env * np.sin(phi1 + inc), env * np.sin(phi2 + 0.5 * inc)
 
 
@@ -86,15 +92,16 @@ def _velocity(x, fs, t_on, velocity_pct):
     return float(np.clip((peak / VEL_REF) ** (velocity_pct / 100.0), 0.0, VEL_MAX))
 
 
-def _follow_gain(e, a, b, end):
-    """Gain over samples [a, end): 1 until the maximum of the smoothed source level e inside the hit [a, b), then
-    e / maximum, never rising again (the sub ends with the source)."""
-    g = np.ones(end - a)
-    seg = e[a:b]
-    if seg.size and seg.max() > 0.0:
-        k = int(np.argmax(seg))
-        g[k:] = np.minimum.accumulate(np.minimum(e[a + k:end] / seg[k], 1.0))
-    return g
+def _follow_gain(e, a, end):
+    """Gain over samples [a, end): the smoothed source level e over its running maximum since the onset a, never
+    rising again (the sub ends with the source). Causal (D8 M4). The 20 ms one-pole RMS ripples by up to ~1 dB on
+    20-30 Hz sources, so the gain stays 1 until e is 1 dB below its running maximum (the attack is untouched)."""
+    seg = np.asarray(e[a:end], dtype=np.float64)
+    if seg.size == 0:
+        return np.ones(0)
+    m = np.maximum.accumulate(seg)
+    r = np.where(m > 0.0, seg / np.where(m > 0.0, m, 1.0), 1.0) * 10.0 ** (FOLLOW_TOL_DB / 20.0)
+    return np.minimum.accumulate(np.minimum(r, 1.0))
 
 
 def render(x, fs, *, retrigger: str = "restart", velocity_pct: float = 60.0, follow: bool = False,
@@ -103,7 +110,7 @@ def render(x, fs, *, retrigger: str = "restart", velocity_pct: float = 60.0, fol
     """Detect onsets in x (the band-limited source x_b) and render sub1_level * Sub -1 + sub2_level * Sub -2,
     aligned to the fractional onset times. Restart: every onset starts a new voice from phase0 and the old one
     fades out over 3 ms. Legato: the phase runs on, and amplitude and pitch start over from the current
-    amplitude. Follow multiplies each voice by the smoothed source level, normalised to its maximum in the hit."""
+    amplitude. Follow multiplies each voice by the smoothed source level over its running maximum since the onset."""
     unknown = set(voice_kwargs) - set(DEFAULTS)
     if unknown or retrigger not in ("restart", "legato"):
         raise TypeError(f"unknown voice parameters {sorted(unknown)} or retrigger {retrigger!r}")
@@ -126,20 +133,20 @@ def render(x, fs, *, retrigger: str = "restart", velocity_pct: float = 60.0, fol
             end = n if last else min(n, b + fade + 1)
             y1, y2 = voice(fs, end - a, t_on_frac=t_on - a, **prm)
             w = 1.0 if last else np.cos(0.5 * np.pi * np.clip((np.arange(a, end) - t_next) / fade, 0.0, 1.0)) ** 2
-            g = _follow_gain(e, a, b, end) if follow else 1.0
+            g = _follow_gain(e, a, end) if follow else 1.0
             out1[a:end] += v * g * w * y1
             out2[a:end] += v * g * w * y2
         else:
             k0, k1 = int(math.ceil(t_on)), (n if last else int(math.ceil(t_next)))
             y1, y2 = _segment((np.arange(k0, k1) - t_on) / fs, prm, phi1, phi2, a_cur, v)
-            g = _follow_gain(e, k0, max(b, k0), k1) if follow else np.ones(k1 - k0)
+            g = _follow_gain(e, k0, k1) if follow else np.ones(k1 - k0)
             out1[k0:k1] += g * y1
             out2[k0:k1] += g * y2
             if not last:  # carry phase and amplitude of the running voice to the next onset
                 s_end = (t_next - t_on) / fs
                 inc = _phase_inc(s_end, prm["f_start"], prm["f_end"], prm["tau_p_ms"] * 1e-3)
                 phi1, phi2 = phi1 + inc, phi2 + 0.5 * inc
-                a_cur = float(_envelope(s_end, prm["attack_ms"] * 1e-3, prm["t60_ms"] * 1e-3, a_cur, v))
+                a_cur = float(_envelope(s_end, _attack_s(prm), prm["t60_ms"] * 1e-3, a_cur, v))
                 if follow and len(g):
                     a_cur *= float(g[min(max(b - k0, 0), len(g) - 1)])
     return sub1_level * out1 + sub2_level * out2

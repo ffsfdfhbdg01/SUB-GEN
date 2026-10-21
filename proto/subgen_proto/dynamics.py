@@ -149,6 +149,8 @@ def limiter(x, fs: float, *, ceiling_db: float, lookahead_ms: float, release_ms:
     if live:
         return drive._adaa(x, lambda u: c * np.tanh(u / c), lambda u: c * c * drive._log_cosh(u / c))
     d = int(round(lookahead_ms * 1e-3 * fs))
+    if x.size == 0:
+        return x.copy()
     ax = np.abs(x)
     r = np.where(ax > c, c / np.maximum(ax, 1e-300), 1.0)
     h = -envelope.sliding_peak(-r, d + 1, initial=-1.0) if d > 0 else r  # causal min; gain 1 before the start
@@ -160,5 +162,5 @@ def limiter(x, fs: float, *, ceiling_db: float, lookahead_ms: float, release_ms:
         e[i] = g
     w = np.hanning(d + 3)[1:-1]
     gain = sps.lfilter(w / np.sum(w), [1.0], e) if d > 0 else e
-    delayed = np.concatenate([np.zeros(d), x[:len(x) - d]]) if d > 0 else x
+    delayed = np.concatenate([np.zeros(min(d, len(x))), x[:max(len(x) - d, 0)]]) if d > 0 else x
     return delayed * gain

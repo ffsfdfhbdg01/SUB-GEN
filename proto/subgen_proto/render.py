@@ -85,6 +85,8 @@ def track_sub(x_b, fs: float, *, f_min: float = 30.0, lookahead_s: float = 0.045
     f0/2, amplitude = the source band's envelope now, gated by the pitch confidence."""
     x_b = np.asarray(x_b, dtype=np.float64)
     n = len(x_b)
+    if n == 0:
+        return x_b.copy()
     trk = track.mpm(x_b, fs, f_min=f_min)
     f0 = track.f0_per_sample(trk, n, fs, lookahead_s=lookahead_s, interp="log" if lookahead_s > 0.0 else "hold")
     f0 = np.nan_to_num(f0, nan=f_min)

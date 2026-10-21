@@ -315,9 +315,28 @@ class TestF0PerSample(unittest.TestCase):
     def test_nan_frames_are_filled_from_the_nearest_valid_value(self):
         trk = track.Track(np.array([0.0, 0.002, 0.004, 0.006]), np.array([np.nan, 60.0, np.nan, 70.0]), np.ones(4))
         f = track.f0_per_sample(trk, 400, FS, interp="hold")
-        self.assertEqual(f[0], 60.0)  # leading NaN: the first valid value
+        self.assertTrue(np.isnan(f[0]))  # leading NaN: no estimate yet (causal, D8 M13)
         self.assertEqual(f[200], 60.0)  # NaN in the middle: the previous valid value
         self.assertEqual(f[300], 70.0)
+
+
+
+class TestCausality(unittest.TestCase):
+    def test_decimation_is_causal(self):
+        # D8 M13: the zero-phase resample_poly rang before the signal; the 8th-order Butterworth at 800 Hz does not
+        x = np.zeros(9600)
+        x[4800:] = signals.sine(55.0, FS, 0.1, level_db=-6.0)[:4800]
+        y, d, _ = track._decimate(x, FS, 2000.0)
+        self.assertTrue(np.all(y[:4800 // d] == 0.0))
+
+    def test_no_estimate_before_the_first_valid_frame(self):
+        # D8 M13: samples before the first estimate are NaN (no estimate yet), not the first estimate from the future
+        trk = track.Track(np.array([0.0, 0.002, 0.004]), np.array([np.nan, 60.0, 70.0]), np.ones(3))
+        f = track.f0_per_sample(trk, 300, FS, interp="hold")
+        self.assertTrue(np.all(np.isnan(f[:96])))
+        self.assertEqual(f[96], 60.0)
+        g = track.f0_per_sample(trk, 300, FS, interp="log")
+        self.assertTrue(np.all(np.isnan(g[:96])))
 
 
 if __name__ == "__main__":

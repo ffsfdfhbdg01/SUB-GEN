@@ -10,6 +10,7 @@ at once instead of rising slowly as the note fills the window.
 """
 from __future__ import annotations
 
+import functools
 import math
 from dataclasses import dataclass
 
@@ -38,10 +39,19 @@ def decimation_plan(fs: float, fs_d_target: float = 2000.0) -> tuple[int, float]
     return d, fs / d
 
 
+@functools.lru_cache(maxsize=None)
+def _aa_sos(fs: float):
+    return sps.butter(8, 800.0, fs=fs, output="sos")
+
+
 def _decimate(x, fs: float, fs_d_target: float):
+    """Causal anti-alias filter (8th-order Butterworth at 800 Hz, SPEC §6.3) and every D-th sample (D8 M13: the
+    zero-phase resample_poly used before rang ahead of the signal)."""
     d, fs_d = decimation_plan(fs, fs_d_target)
     x = np.asarray(x, dtype=np.float64)
-    return (x if d == 1 else sps.resample_poly(x, 1, d)), d, fs_d
+    if d == 1 or len(x) == 0:
+        return x, d, fs_d
+    return sps.sosfilt(_aa_sos(float(fs)), x)[::d], d, fs_d
 
 
 def _trim(frame) -> int:
@@ -161,6 +171,9 @@ def apply_prior(f_raw, conf, *, window: float = 0.25, confirm: int = 3, voiced: 
 def _detect(x, fs, picker, *, f_min, f_max, hop_ms, window_periods, fs_d_target, prior) -> Track:
     y, d, fs_d = _decimate(x, fs, fs_d_target)
     w = int(np.ceil(window_periods * fs_d / max(f_min, 20.0)))
+    if len(y) == 0:
+        z = np.zeros(0)
+        return Track(z, z.copy(), z.copy(), fs_d, w / fs_d)
     tau_max = int(np.ceil(fs_d / f_min))
     tau_min = max(2, int(np.floor(fs_d / f_max)))
     hop = max(1, int(round(hop_ms * 1e-3 * fs_d)))
@@ -281,21 +294,24 @@ def evaluate(trk: Track, truth_f0, onset_t: float, *, conf_min: float = 0.5, loc
 def f0_per_sample(trk: Track, n: int, fs: float, *, lookahead_s: float = 0.0, interp: str = "log"):
     """Per-sample f0 (Hz) for the oscillator: output sample i reads the track at i/fs + lookahead_s. 'log'
     interpolates log f between frames (Mix/Print, with lookahead_s >= the window delay); 'hold' takes the last
-    frame at or before that time (causal, Live). NaN frames take the previous valid value (the first valid one
-    at the start)."""
+    frame at or before that time (causal, Live). NaN frames take the previous valid value; before the first valid
+    frame there is no estimate yet: NaN (D8 M13: it used to take the first estimate from the future)."""
     t_query = np.arange(n) / fs + lookahead_s
     f = np.asarray(trk.f0, dtype=float)
     ok = np.isfinite(f) & (f > 0.0)
-    if not ok.any():
+    if n == 0 or not ok.any():
         return np.full(n, math.nan)
+    first = int(np.argmax(ok))
     idx = np.where(ok, np.arange(len(f)), -1)
     np.maximum.accumulate(idx, out=idx)
-    idx[idx < 0] = int(np.argmax(ok))
-    filled = f[idx]
+    filled = f[np.maximum(idx, first)]
     if interp == "hold":
         k = np.clip(np.searchsorted(trk.t, t_query, side="right") - 1, 0, len(filled) - 1)
-        return filled[k]
-    return np.exp(np.interp(t_query, trk.t, np.log(filled)))
+        out = filled[k]
+    else:
+        out = np.exp(np.interp(t_query, trk.t[first:], np.log(filled[first:])))
+    out[t_query < trk.t[first]] = math.nan
+    return out
 
 
 def shape_wave(phi, shape_pct: float):

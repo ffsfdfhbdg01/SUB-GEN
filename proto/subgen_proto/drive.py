@@ -114,7 +114,7 @@ def process(x, fs: float, *, drive_pct: float, mode: str, balance: float = 0.0, 
     """Drive chain on a block x (see the module docstring). tone_hz=None bypasses the Tone filter. The ADAA output
     is delayed by half a (oversampled) sample against the linear path; that delay is part of the dry compensation."""
     x = np.asarray(x, dtype=np.float64)
-    if drive_pct <= 0.0:
+    if drive_pct <= 0.0 or x.size == 0:
         return x.copy()
     k = 10.0 ** (REF_DB / 20.0)
     x_ref = x * k

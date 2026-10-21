@@ -121,7 +121,8 @@ class TestRenderFileCli(unittest.TestCase):
             out = Path(tmp) / "out.wav"
             render_file.main([str(src), "--engine", "trigger", "--out", str(out)])
             y, fs = sf.read(out)
-            self.assertEqual((fs, y.shape, sf.info(out).subtype), (FS, x.shape, "PCM_24"))
+            d = int(round(0.005 * FS)) + render_file.align_samples("auto", FS, 30.0, 120.0)  # the dry's delay (D8 M7)
+            self.assertEqual((fs, y.shape, sf.info(out).subtype), (FS, (len(x) + d, 2), "PCM_24"))
             self.assertGreater(util.band_db(y[:, 0], FS, 20.0, 100.0), util.band_db(x[:, 0], FS, 20.0, 100.0) + 1.0)
             self.assertLessEqual(np.max(np.abs(y)), 1.0)
 
@@ -176,6 +177,19 @@ class TestRenderFileCli(unittest.TestCase):
             self.assertGreater(float(np.max(np.abs(y[:, 3]))), 0.0)
             for ch in (2, 4, 5):
                 self.assertEqual(float(np.max(np.abs(y[:, ch]))), 0.0, msg=f"channel {ch}")
+
+    def test_render_file_add_mode_keeps_the_end_of_the_file(self):
+        # D8 M7: the dry is delayed by the 5 ms limiter lookahead (+ align), so the output grows instead of cutting
+        from experiments import render_file
+        x = 0.1 * np.stack([signals.sine(55.0, FS, 1.0, 0.0), signals.sine(70.0, FS, 1.0, 0.0)], axis=1)
+        d = int(round(0.005 * FS))
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = Path(tmp) / "in.wav", Path(tmp) / "out.wav"
+            sf.write(src, x, FS, subtype="PCM_24")
+            render_file.main([str(src), "--engine", "divide", "--align-ms", "0", "--sub-db", "-200", "--out", str(out)])
+            y, _ = sf.read(out, always_2d=True)
+        self.assertEqual(len(y), len(x) + d)
+        np.testing.assert_allclose(y[d:], x, atol=1e-6)
 
     def test_render_file_rejects_an_unknown_engine(self):
         from experiments import render_file

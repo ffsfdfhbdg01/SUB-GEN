@@ -20,7 +20,7 @@ FS = 48000
 def _formula(fs, n, *, f_start=80.0, f_end=45.0, tau_p_ms=30.0, attack_ms=2.0, t60_ms=350.0, phase0_deg=0.0, frac=0.0):
     t = (np.arange(n) - frac) / fs
     tt = np.maximum(t, 0.0)
-    tau, ta, phi0 = tau_p_ms * 1e-3, attack_ms * 1e-3, np.radians(phase0_deg)
+    tau, ta, phi0 = tau_p_ms * 1e-3, max(attack_ms, 0.5) * 1e-3, np.radians(phase0_deg)  # attack >= 0.5 ms (D8 M5)
     phase = phi0 + 2.0 * np.pi * (f_end * tt + (f_start - f_end) * tau * (1.0 - np.exp(-tt / tau)))
     ramp = np.divide(tt, ta, out=np.zeros_like(tt), where=ta > 0.0)
     a = np.where(tt < ta, ramp, 10.0 ** (-3.0 * (tt - ta) / (t60_ms * 1e-3)))
@@ -262,6 +262,24 @@ class TestRender(unittest.TestCase):
             y = trigger.render(x, FS, hold_ms=0.0, lockout_ms=60.0)
             self.assertEqual(len(y), len(x))
             self.assertTrue(np.all(np.isfinite(y)))
+
+
+
+class TestD8Fixes(unittest.TestCase):
+    def test_follow_gain_is_causal(self):
+        # D8 M4: the Follow normalisation divided by the maximum of the whole hit, known only offline; it now uses the
+        # running maximum since the onset, so a prefix of the input gives the same prefix of the output.
+        x = signals.kick(FS, n_hits=1, level_db=-12.0)
+        x[int(0.030 * FS):] += signals.kick(FS, n_hits=1, level_db=-6.0)[:len(x) - int(0.030 * FS)]  # louder, in the lockout
+        k = int(0.025 * FS)
+        full = trigger.render(x, FS, follow=True)
+        part = trigger.render(x[:k], FS, follow=True)
+        np.testing.assert_allclose(full[:k], part, atol=1e-12)
+
+    def test_zero_attack_at_90_degrees_does_not_click(self):
+        # D8 M5: attack 0 with a start phase of 90 degrees jumped by the full amplitude; the attack is at least 0.5 ms
+        y1, _ = trigger.voice(FS, 4800, attack_ms=0.0, phase0_deg=90.0)
+        self.assertLessEqual(np.max(np.abs(np.diff(np.concatenate([[0.0], y1])))), 0.06)
 
 
 if __name__ == "__main__":

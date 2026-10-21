@@ -10,7 +10,8 @@ turns that into a sub, which then goes through level -> Drive (+ 5 Hz DC blocker
 (5 ms, like Print). 'add' delays the dry by the limiter's lookahead plus --align-ms (default 'auto': the source band's
 group delay at sqrt(range_lo * range_hi), as in the listening renders and as align_ms does in the plug-in) and adds the
 sub to the front pair (channels 0 and 1; to every channel of a mono or stereo file; --channels picks others, e.g. 3 for
-the LFE of a 5.1 WAV); the result is scaled down if it would clip. 'wet' writes the sub alone (mono).
+the LFE of a 5.1 WAV) and the output is that much longer than the input; the result is scaled down if it would
+clip. 'wet' writes the sub alone (mono).
 Output: 24-bit WAV at the input's sample rate.
 This is an offline prototype for listening, not the plug-in: no surround routing, no LFE mode, no phase tools.
 """
@@ -58,6 +59,9 @@ def align_samples(arg: str, fs: float, lo: float, hi: float) -> int:
 def main(argv=None) -> Path:
     a = build_parser().parse_args(argv)
     x, fs = sf.read(a.input, always_2d=True)
+    d = int(round(LIMITER_LOOKAHEAD_MS * 1e-3 * fs)) + align_samples(a.align_ms, fs, a.range_lo, a.range_hi)
+    if a.mode == "add":  # the dry is delayed by d: render d more samples instead of cutting the end (D8 M7)
+        x = np.vstack([x, np.zeros((d, x.shape[1]))])
     x_b = band.range_filter(np.mean(x, axis=1), fs, a.range_lo, a.range_hi)
     kw = {"divide": dict(shape_pct=a.shape),
           "track": dict(shape_pct=a.shape, lookahead_s=a.lookahead_ms / 1000.0, f_min=a.range_lo),
@@ -72,7 +76,6 @@ def main(argv=None) -> Path:
     if a.mode == "wet":
         y = sub
     else:
-        d = min(len(x), int(round(LIMITER_LOOKAHEAD_MS * 1e-3 * fs)) + align_samples(a.align_ms, fs, a.range_lo, a.range_hi))
         y = np.vstack([np.zeros((d, x.shape[1])), x[:len(x) - d]])
         chans = [int(c) for c in a.channels.split(",")] if a.channels else list(range(min(2, x.shape[1])))
         y[:, chans] += sub[:, None]
