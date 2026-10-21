@@ -153,5 +153,35 @@ class TestProcess(unittest.TestCase):
             self.assertLess(np.max(mag[w >= 0.55]), -100.0, msg=f"os {os_factor}")
 
 
+
+def _tone(f, fs, level_db, dur=1.5):
+    return 10.0 ** (level_db / 20.0) * np.sin(2.0 * np.pi * f * np.arange(int(dur * fs)) / fs)
+
+
+class TestHotInputs(unittest.TestCase):
+    """R3 (D8 I2): sub_level (up to +18 dB) sits before the Drive, so inputs above the -6 dBFS reference are real. The
+    criterion (D2) holds below 500 Hz for inputs up to +12 dBFS: <= -80 dB (Live), <= -90 dB (Mix, Print)."""
+
+    def test_fold_aliasing_stays_out_of_the_sub_band_for_loud_inputs(self):
+        for fs in (44100, 48000):
+            for f in (31.0, 81.0, 121.0):
+                for level in (6.0, 12.0):
+                    for os_factor, bound in ((1, -80.0), (2, -90.0), (4, -90.0)):
+                        v = drive.nonharmonic_db(_tone(f, fs, level), fs, f, f_hi=500.0, drive_pct=100.0, mode="fold",
+                                                 tone_hz=None, os_factor=os_factor, adaa=True)
+                        self.assertLessEqual(v, bound, msg=f"fs {fs} f {f} level {level} os {os_factor}")
+
+    def test_fold_up_to_the_reference_level_is_unchanged(self):
+        x = _tone(81.0, 48000, -6.0)  # peak 0.5: x_ref peak 2.0 = the cap
+        np.testing.assert_array_equal(drive.process(x, 48000, drive_pct=100.0, mode="fold"),
+                                      drive.process(x, 48000, drive_pct=100.0, mode="fold", fold_cap=False))
+
+    def test_other_modes_meet_the_criterion_at_plus_12_dbfs(self):
+        for mode in ("soft", "tube", "tape", "hard"):
+            v = drive.nonharmonic_db(_tone(121.0, 44100, 12.0), 44100, 121.0, f_hi=500.0, drive_pct=100.0, mode=mode,
+                                     tone_hz=None, os_factor=1, adaa=True)
+            self.assertLessEqual(v, -80.0, msg=mode)
+
+
 if __name__ == "__main__":
     unittest.main()

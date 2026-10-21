@@ -5,6 +5,10 @@ Domain: x_ref = x * 10^(12/20) (a -12 dBFS-peak sine is +-1.0), pre-gain g = 10^
 alpha = min(1, drive/5): y = ((1 - alpha) x_ref + alpha f(g x_ref)) / 10^(12/20), then the Tone low-pass (wet by
 alpha) and the Auto Gain. drive = 0 returns x unchanged. DC left by an asymmetric shaper is removed downstream by
 `dc_block` (1-pole 5 Hz, SPEC §4.7); Auto Gain therefore matches the AC RMS.
+Fold depth cap (R3, D8 I2): the fold output's bandwidth grows with the slope of g x_ref at its zero crossings, so a hot
+input (sub_level before the Drive reaches +18 dB) aliases into the sub band. When the input envelope (hold over
+max(10 ms, 1.5 / f_sub1), then a 50 ms release) exceeds the reference -6 dBFS peak (x_ref 2.0), the fold input is
+scaled down to it: up to -6 dBFS nothing changes, above it the fold keeps the depth it has at -6 dBFS.
 """
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ import functools
 import numpy as np
 from scipy import signal as sps
 
-from . import svf, util
+from . import envelope, svf, util
 
 REF_DB = 12.0
 TUBE_BIAS = 0.35
@@ -21,6 +25,8 @@ ADAA_TOL = 1e-5
 OS_ATTEN_DB = 110.0     # design stopband of the oversampling filters (kaiserord is ~0.3 dB optimistic; 100 dB is met)
 OS_TRANSITION = 0.1     # transition band, as a fraction of the base rate, centred on the base Nyquist frequency
 MODES = ("soft", "tube", "tape", "fold", "hard")
+FOLD_CAP = 2.0          # x_ref peak of a -6 dBFS input: the fold depth is held there for hotter inputs (R3)
+FOLD_RELEASE_MS = 50.0
 
 
 # ------------------------------------------------------------------------------------------------ shapers
@@ -89,8 +95,22 @@ def auto_gain_db(mode: str, drive_pct: float, balance: float = 0.0) -> float:
     return float(20.0 * np.log10(util.rms(r) / util.rms(y - np.mean(y))))
 
 
+def fold_scale(x_ref, fs: float, f_sub1: float = 40.0) -> np.ndarray:
+    """min(1, FOLD_CAP / envelope): the envelope is a hold of |x_ref| over max(10 ms, 1.5 / f_sub1) followed by a
+    one-pole release (instant rise), so a steady tone gets a constant scale and a falling level no step."""
+    w = max(1, int(round(max(0.010, 1.5 / f_sub1) * fs)))
+    held = envelope.sliding_peak(np.abs(x_ref), w)
+    r = np.exp(-1.0 / (FOLD_RELEASE_MS * 1e-3 * fs))
+    env = np.empty_like(held)
+    e = 0.0
+    for i, v in enumerate(held.tolist()):
+        e = v if v >= e else max(v, e * r)
+        env[i] = e
+    return np.minimum(1.0, FOLD_CAP / np.maximum(env, 1e-300))
+
+
 def process(x, fs: float, *, drive_pct: float, mode: str, balance: float = 0.0, tone_hz=500.0, auto_gain: bool = True,
-            os_factor: int = 1, adaa: bool = True) -> np.ndarray:
+            os_factor: int = 1, adaa: bool = True, f_sub1: float = 40.0, fold_cap: bool = True) -> np.ndarray:
     """Drive chain on a block x (see the module docstring). tone_hz=None bypasses the Tone filter. The ADAA output
     is delayed by half a (oversampled) sample against the linear path; that delay is part of the dry compensation."""
     x = np.asarray(x, dtype=np.float64)
@@ -101,6 +121,8 @@ def process(x, fs: float, *, drive_pct: float, mode: str, balance: float = 0.0, 
     g, alpha = _gains(drive_pct)
     f, f1 = shape_fn(mode, effective_bias(mode, balance))
     u = g * x_ref
+    if mode == "fold" and fold_cap:
+        u = u * fold_scale(x_ref, fs, f_sub1)
     if os_factor > 1:
         u = sps.resample_poly(u, os_factor, 1, window=oversampling_taps(os_factor))
     nl = _adaa(u, f, f1) if adaa else f(u)
