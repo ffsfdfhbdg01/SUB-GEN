@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""P2-02: DIVIDE engine - accuracy, purity, continuity, polarity rule, gate behaviour, phase-halving comparison."""
+"""P2-02: DIVIDE engine - accuracy, purity, continuity, polarity rule, gate behaviour, phase-halving comparison.
+
+Re-run after the independent review (D8): note boundaries and polarity resets (R2), provisional confidence and the
+gate lookahead (R1), shape as a cutoff (R5) and conf_gate edges (I1) are measured on the default output."""
 import numpy as np
 import matplotlib
 
@@ -7,7 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from experiments._common import Recorder
-from subgen_proto import divide, signals, svf, util
+from subgen_proto import band, divide, render, signals, svf, util
 
 
 def _inband(f, fs, dur, snr_db, seed):
@@ -18,6 +21,16 @@ def _inband(f, fs, dur, snr_db, seed):
 
 def _db(v):
     return 20.0 * np.log10(max(v, 1e-300))
+
+
+def _first_sign(seg, frac=0.1):
+    j = int(np.argmax(np.abs(seg) > frac * np.max(np.abs(seg))))
+    return np.sign(seg[j])
+
+
+def _floor(fs, n, rms_db, seed=5):
+    nz = signals.pink_noise(fs, n / fs, 30.0, 120.0, level_db=0.0, seed=seed)[:n]
+    return nz * (10.0 ** (rms_db / 20.0) / np.sqrt(np.mean(nz ** 2)))
 
 
 def main():
@@ -80,8 +93,44 @@ def main():
         ok_sign += int(np.sign(ys[j]) == np.sign(xs[j]))
         shapes.append(ys[: int(0.2 * FS)] / pk)
     corr = min(float(np.dot(shapes[0], s) / np.sqrt(np.dot(shapes[0], shapes[0]) * np.dot(s, s))) for s in shapes[1:])
-    rec.check("polarity rule: hits whose first sub lobe matches the source (of 100)", ok_sign, ">=", 100)
-    rec.check("polarity rule: minimum correlation of sub waveform between hits", corr, ">=", 0.99)
+    rec.check("polarity rule: hits whose first sub lobe matches the source (of 100, native y1)", ok_sign, ">=", 100)
+    rec.check("polarity rule: minimum correlation of sub waveform between hits (native y1)", corr, ">=", 0.99)
+
+    # 4b. polarity on the default output (smoothed + gated), separated hits over noise floors and hum, and
+    #     overlapping tails (D8 C2 -> R2). 20 hits each.
+    n20, hum = 20, lambda n: 10.0 ** (-70.0 / 20.0) * np.sin(2.0 * np.pi * 31.0 * np.arange(n) / FS)
+    def hits(spacing=0.5, t60=0.3, extra=None):
+        xx = signals.kick(FS, n_hits=n20, spacing=spacing, level_db=-6.0, t60=t60)
+        return band.range_filter(xx + (extra(len(xx)) if extra else 0.0), FS)
+    variants = {"silence": hits(), "hum 31 Hz -70 dBFS": hits(extra=hum)}
+    variants.update({f"pink {lv:g} dBFS RMS": hits(extra=lambda n, lv=lv: _floor(FS, n, lv)) for lv in (-90, -80, -70, -60)})
+    pol = {}
+    for quality in ("mix", "live"):
+        for label, xb in variants.items():
+            y = render.divide_sub(xb, FS, quality=quality)
+            h = int(0.5 * FS)
+            ok = sum(int(_first_sign(y[i * h:(i + 1) * h]) == _first_sign(xb[i * h:(i + 1) * h])) for i in range(n20))
+            sh = [y[i * h:i * h + int(0.2 * FS)] for i in range(n20)]
+            cmin = min(float(np.dot(sh[0], v) / np.sqrt(np.dot(sh[0], sh[0]) * np.dot(v, v))) for v in sh[1:])
+            pol[f"{quality} | {label}"] = (ok, round(cmin, 4))
+    rec.info("default output, separated hits: (first lobe matches the source, of 20; min correlation)", pol)
+    rec.check("default output, separated hits: worst first-lobe agreement (Mix and Live, 6 variants)",
+              min(v[0] for v in pol.values()), ">=", n20)
+    rec.check("default output, separated hits: worst correlation between hits", min(v[1] for v in pol.values()), ">=", 0.99)
+    tails = {}
+    for spacing in (0.45, 0.5):
+        xb = hits(spacing=spacing, t60=1.0)
+        r = divide.divide(xb, FS)
+        y = render.divide_sub(xb, FS, quality="mix")
+        h = int(spacing * FS)
+        native = sum(int(_first_sign(r.y1[i * h:(i + 1) * h]) == _first_sign(xb[i * h:(i + 1) * h])) for i in range(n20))
+        out_signs = {float(_first_sign(y[i * h:(i + 1) * h])) for i in range(1, n20)}
+        tails[f"T60 1 s every {spacing:g} s"] = {"native y1 matches (of 20)": native, "output signs, hits 1-19": sorted(out_signs)}
+    rec.info("overlapping tails (each hit over the previous one's tail, 13.5 dB down at 0.45 s), Mix", tails)
+    rec.check("overlapping tails: native y1 first lobe matches the source (worst of 2 spacings, of 20)",
+              min(v["native y1 matches (of 20)"] for v in tails.values()), ">=", n20)
+    rec.check("overlapping tails: the output looks alike from hit to hit (distinct first-lobe signs, worst)",
+              max(len(v["output signs, hits 1-19"]) for v in tails.values()), "<=", 1)
 
     # 5. gate behaviour: kick (trend vs SPEC rule), clean-sine opening time
     kick = signals.kick(FS, n_hits=1, spacing=0.5, level_db=-6.0)
@@ -92,14 +141,23 @@ def main():
         first = np.flatnonzero(m)
         gate[mode] = {"open_fraction_50-300ms": round(float(np.mean(m[int(.05 * FS):int(.30 * FS)])), 3),
                       "first_open_ms": round(1000 * first[0] / FS, 1) if first.size else None}
-    rec.info("kick gate (SIG-03)", gate)
+    rec.info("kick gate (SIG-03; conf provisional 1 from the note start)", gate)
     rec.check("kick: gate open fraction 50-300 ms, 'trend' rule", gate["trend"]["open_fraction_50-300ms"], ">=", 0.9)
-    rec.info("kick: SPEC rule ('diff') open fraction 50-300 ms", gate["diff"]["open_fraction_50-300ms"])
+    rec.info("kick: SPEC 0.1 rule ('diff') open fraction 50-300 ms", gate["diff"]["open_fraction_50-300ms"])
+    xb1 = band.range_filter(kick, FS)
+    n40 = int(0.040 * FS)
+    onset = {}
+    for quality, look in (("live", 0.0), ("mix", 0.045), ("print", 0.055)):
+        gated = render.divide_sub(xb1, FS, quality=quality)
+        ungated = divide.smooth_sub(divide.divide(xb1, FS, live=quality == "live", lookahead_s=look), FS, 1)
+        onset[quality] = round(float(np.sum(gated[:n40] ** 2) / np.sum(ungated[:n40] ** 2)), 3)
+    rec.info("kick through the range filter: gated / ungated sub energy in the first 40 ms (D8 C1: was 0.005)", onset)
+    rec.check("kick onset: gated / ungated sub energy in the first 40 ms (worst quality)", min(onset.values()), ">=", 0.5)
     opens = {}
     for f in (30.0, 55.0, 120.0):
-        r = divide.divide(signals.sine(f, FS, 1.0, -12.0), FS)
-        opens[f] = round(1000 * np.flatnonzero(divide.gate_mask(r.conf, 50.0))[0] / FS, 1)
-    rec.info("clean sine: gate opens after (ms) [3 periods = 100.0, 54.5, 25.0]", opens)
+        r = divide.divide(np.concatenate([np.zeros(FS // 5), signals.sine(f, FS, 1.0, -12.0)]), FS)
+        opens[f] = round(1000 * (np.flatnonzero(divide.gate_mask(r.conf, 50.0, r.provisional))[0] - FS // 5) / FS, 1)
+    rec.info("clean sine after silence: gate opens after the note start (ms; provisional, R1)", opens)
 
     # 6. in-band noise sweep, chord and random noise
     sweep = {}
@@ -120,8 +178,28 @@ def main():
     rec.info("random 30-120 Hz noise: open fraction per seed", [round(float(v), 4) for v in fr_pink])
     rec.check("random noise: worst open fraction", max(fr_pink), "<=", 0.03)
     r = divide.divide(signals.chord(FS, (55.0, 69.0, 82.0), 3.0, -12.0), FS)
-    rec.check("chord 55/69/82 Hz: gate open fraction", float(np.mean(divide.gate_mask(r.conf, 50.0)[int(0.1 * FS):])),
+    rec.check("chord 55/69/82 Hz: gate open fraction", float(np.mean(divide.gate_mask(r.conf, 50.0, r.provisional)[int(0.1 * FS):])),
               "<=", 0.0)
+    chord = signals.chord(FS, (55.0, 69.0, 82.0), 3.0, -12.0)
+    lev = {q: round(_db(util.rms(render.divide_sub(chord, FS, quality=q)[int(0.1 * FS):]) / util.rms(chord[int(0.1 * FS):])), 1)
+           for q in ("live", "mix")}
+    rec.info("chord from silence: gated sub level after 100 ms re the source [dB]", lev)
+    rec.check("T-DIV-05 chord: sub level after 100 ms (worst of Live, Mix)", max(lev.values()), "<=", -40.0, "dB")
+
+    # 6b. conf_gate edges (D8 I1): a 55 Hz note (1 s), then random 30-120 Hz noise (2 s): open fraction in the noise
+    x = np.concatenate([signals.sine(55.0, FS, 1.0, -12.0), signals.pink_noise(FS, 2.0, 30.0, 120.0, level_db=-12.0, seed=6)])
+    r = divide.divide(x, FS)
+    edges = {g: round(float(np.mean(divide.gate_mask(r.conf, g, r.provisional)[int(1.1 * FS):])), 3) for g in (0.0, 1.0, 50.0, 100.0)}
+    rec.info("conf_gate -> gate open fraction during the noise after a note (was 1.0 at conf_gate 0)", edges)
+    rec.check("conf_gate 0: the gate closes in noise (open fraction)", edges[0.0], "<=", 0.5)
+
+    # 6c. shape (R5): level of the f/2 component vs shape, re shape 0
+    res55 = divide.divide(signals.sine(55.0, FS, 4.0, -12.0), FS)
+    ref = util.harmonic_amps(divide.smooth_sub(res55, FS, 1)[FS:3 * FS], FS, 27.5, n=1)[0]
+    shape_tab = {sh: round(_db(util.harmonic_amps(divide.smooth_sub(res55, FS, 1, shape_pct=sh)[FS:3 * FS], FS, 27.5, n=1)[0] / ref), 2)
+                 for sh in (25.0, 50.0, 75.0, 100.0)}
+    rec.info("shape -> f/2 level re shape 0 [dB] (mixing the paths gave -2.1 / -3.1 / -2.1 dB at 25 / 50 / 75 %)", shape_tab)
+    rec.check("shape: worst f/2 level change", max(abs(v) for v in shape_tab.values()), "<=", 0.5, "dB")
 
     # 7. phase halving vs divider on noisy sine (frequency error of the sub)
     cmp_ = {}

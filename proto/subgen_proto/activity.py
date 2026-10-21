@@ -78,7 +78,7 @@ def note_starts(x, fs: float, *, thresh_db: float = -55.0) -> NoteStarts:
     e_s = np.concatenate([np.zeros(k), e_s[:len(x) - k]])  # the slow level as it was before the rise
     d = e_f - 10.0 ** (ONSET_RATIO_DB / 20.0) * e_s
     cond = (d >= 0.0) & (e_f >= np.sqrt(2.0) * 10.0 ** (thresh_db / 20.0))
-    quiet = e_f < 10.0 ** (BEGIN_RATIO_DB / 20.0) * e_s
+    quiet = e_f <= 10.0 ** (BEGIN_RATIO_DB / 20.0) * e_s  # digital silence (0 <= 0) is quiet too
     last_quiet = np.where(quiet, np.arange(len(x)), -1)
     np.maximum.accumulate(last_quiet, out=last_quiet)
     events = []  # (detect, begin)

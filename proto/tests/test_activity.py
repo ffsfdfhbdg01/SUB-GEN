@@ -77,5 +77,12 @@ class TestNoteBoundaries(unittest.TestCase):
             self.assertLessEqual(len(activity.note_starts(x, FS)), 3, msg=f"seed {seed}")
 
 
+    def test_begin_after_digital_silence_is_the_first_sound(self):
+        # in digital silence both envelopes are 0: that counts as quiet, so the rise begins at the first sample
+        x = np.concatenate([np.zeros(FS // 5), signals.sine(55.0, FS, 0.5, level_db=-12.0)])
+        st = activity.note_starts(x, FS)
+        self.assertEqual(len(st), 1)
+        self.assertLessEqual(abs(st.begin[0] - FS // 5), 1.0)
+
 if __name__ == "__main__":
     unittest.main()
