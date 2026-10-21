@@ -1,29 +1,29 @@
 # SUB-GEN — Raport Fazy 2: prototyp DSP (Python)
 
-Data: 2026-10-20 · Gałąź: `dev` (lokalnie, nic nie wypchnięto) · Stan: **zaakceptowany 2026-10-20** (rekomendacje D1–D9); korekty naniesione w SPEC 0.2
+Data: 2026-10-20 · Gałąź: `dev` (lokalnie, nic nie wypchnięto) · Stan: **zaakceptowany 2026-10-20** (rekomendacje D1–D9); korekty naniesione w SPEC 0.2 · **poprawki po niezależnym przeglądzie D8: 2026-10-21 (§11), SPEC 0.3**
 Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `proto/` · Wykresy: `docs/img/` · Pliki odsłuchowe: `renders/` (poza gitem)
 
 ## 0. W skrócie
 
 - Zbudowałem offline'owy prototyp wszystkich bloków DSP ze SPEC: filtry TPT/Cytomic, silniki DIVIDE, TRACK, TRIGGER i HARMONIC, Drive z ADAA i oversamplingiem, parę Hilberta z rotacją i Auto-Align, filtry LFE z FIR liniowofazowym, kompresor/bramkę/limiter, budżet latencji i pliki odsłuchowe.
-- **216 testów jednostkowych — wszystkie zielone** (z `-W error`). **11 eksperymentów, 86 kontroli: 80 PASS, 6 FAIL.** Każdy FAIL to celowa kontrola „dosłownie według SPEC”, która dokumentuje wadę SPEC (§5).
+- **251 testów jednostkowych — wszystkie zielone** (z `-W error`; przy bramce było 216, resztę dodały poprawki po przeglądzie D8). **11 eksperymentów, 93 kontrole — wszystkie PASS.** Przy bramce było 86 kontroli, w tym 6 FAIL: celowe kontrole „dosłownie według SPEC 0.1”, które dokumentowały wady SPEC (§5). Po zaakceptowaniu korekt są informacjami.
 - **22 pliki odsłuchowe** (UC1–UC5) z `renders/README.txt` oraz skrypt **`render_file`** do Twojego materiału (§8).
 - Najważniejsze wnioski:
-  1. **DIVIDE** dzieli częstotliwość dokładnie (błąd ~2·10⁻⁹ %), bez nieciągłości i ze stałą polaryzacją uderzenie w uderzenie (100/100). Reguła pewności z SPEC §6.2 zamyka jednak bramkę na każdej stopie (spadek wysokości) — zastąpiłem ją regułą „trendu”.
+  1. **DIVIDE** dzieli częstotliwość dokładnie (błąd ~2·10⁻⁹ %) i bez nieciągłości. Reguła pewności z SPEC §6.2 zamykała bramkę na każdej stopie (spadek wysokości) — zastąpiłem ją regułą „trendu”. **Popr. D8:** w wersji z bramki bramka wycinała pierwsze ~40 ms każdej stopy, a polaryzacja była stała tylko przy cyfrowej ciszy między uderzeniami. Liczby „otwarta 100 %” i „100/100” pochodziły z okna 50–300 ms i z syntetycznego sygnału. Po poprawkach R1–R2 (§11) pierwsze 40 ms zachowuje 94–96 % energii suba, a polaryzacja jest zgodna 20/20 także przy szumie i buczeniu.
   2. **TRACK** zna wysokość dopiero po ~2 okresach nuty. L_look ze SPEC (Mix 25 / Print 50 ms) wyrównuje sub z dry tylko dla nut ≥ 100 / ≥ 45 Hz. Proponuję **Mix 47 / Print 65 ms**.
   3. **HARMONIC**: obwiednia ze SPEC (peak follower 5/60 ms) zaniża amplitudę o ~1 dB i faluje, przez co wagi harmonicznych są błędne o 13,6 dB. Max-hold z 1,5 okresu daje 0,017 dB.
-  4. **Drive**: Auto Gain trzyma ±0,04 dB. Aliasing trybu Hard przy drive 100 % to w Live −55 dB, a w Mix −77 dB, więc cele SPEC (−80/−90 dB) nie są spełnione. Print daje −95 dB ✓. Po filtrze LP toru sub zostaje jednak tylko −129 dB nawet w Live.
-  5. **Kompresor**: zniekształcenia zależą od detektora, nie od „reguły tętnień”. Detektor bez tętnień daje THD −124 dB przy dowolnych czasach. Reguła pomaga tylko detektorom z tętnieniami i nawet z nią nie schodzą poniżej −57 dB.
-  6. **Para Hilberta**: wystarczą 4 sekcje na gałąź (błąd 0,13°). Kryteria SPEC (1° i ±0,05 dB) są sprzeczne. **θ = 0 nie jest tożsamością**: gałąź A ma +71…−141° fazy i 9,8 ms opóźnienia przy 30 Hz. Dlatego Auto-Align musi analizować sub *po* gałęzi A.
-  7. **Linear Phase**: celem ma być |H|, nie |H|². Kaiser β ≈ 3, a nie 8. HP 20 Hz kosztuje ~159 ms latencji (48 kHz); sam LP 120 Hz — 39 ms.
+  4. **Drive**: Auto Gain trzyma ±0,04 dB. Aliasing trybu Hard przy drive 100 % to w Live −55 dB, a w Mix −77 dB, więc cele SPEC (−80/−90 dB) nie są spełnione. Print daje −95 dB ✓. W paśmie toru sub (< 500 Hz) przy wejściu −6 dBFS zostaje tylko −110 dB (44,1 kHz) i −129 dB (48 kHz), nawet w Live. **Popr. D8:** Fold przy wejściu +6 dBFS dawał w paśmie suba −37 dB. Po ograniczeniu jego głębokości (R3) najgorszy przypadek dla wejść −6…+12 dBFS to −90,2 dB (Live) i −93,2 dB (Mix, Print).
+  5. **Kompresor**: zniekształcenia zależą od detektora, nie od „reguły tętnień”. Detektor bez tętnień daje THD −124 dB przy dowolnych czasach. Reguła pomaga tylko detektorom z tętnieniami i nawet z nią nie schodzą poniżej −57 dB. **Popr. D8:** to stan ustalony. Na onsecie domyślny RMS miał największy rozprysk (−39 dB wobec −56 dB dla Peak), więc domyślny jest teraz Peak, a RMS dostaje minimalny atak ¼ okresu suba (R4).
+  6. **Para Hilberta**: wystarczą 4 sekcje na gałąź (błąd 0,13°). Kryteria SPEC (1° i ±0,05 dB) są niewystarczające: 1° nie gwarantuje ±0,05 dB (popr. D8 — wcześniej „sprzeczne”). **θ = 0 to gałąź A, nie tożsamość** (SPEC 0.1 to mówił; nowe są liczby): +71…−141° fazy i 9,8 ms opóźnienia przy 30 Hz. Dlatego Auto-Align musi analizować sub *po* gałęzi A.
+  7. **Linear Phase**: celem ma być |H|, nie |H|². Kaiser β ≈ 3, a nie 8. HP 20 Hz kosztuje ~159 ms latencji (48 kHz); sam LP 120 Hz — 39 ms. W v1.0 (D5) tylko LP, ze stałym jądrem N_LIN = 4097 przy 48 kHz: 42,7 ms + 5,3 ms partycji konwolucji (P2-08).
   8. **LFE**: domyślnie **Butterworth 24 dB/okt przy 120 Hz**: 14,25 dB przy 1,5·fc, −0,17 dB przy 80 Hz, 3,65 ms przy 40 Hz.
-  9. **Opóźnienie toru sub** (pasmo źródłowe + LP + rotacja) wynosi 26 ms przy 40 Hz i 37 ms przy 30 Hz. Zakres `align_ms` 0–20 ms nie wystarcza.
+  9. **Opóźnienie toru sub** — pasmo źródłowe przy częstotliwości źródła, HP 22 Hz, LP 140 Hz i rotacja (domyślny łańcuch; popr. D8 M2) — wynosi 24,1 ms przy 40 Hz i 34,8 ms przy 30 Hz. Zakres `align_ms` 0–20 ms nie wystarcza.
   10. Kilka testów z TEST_PLAN mierzy nie to, co powinno. Przykłady: T-ALIAS-01 jest ślepy dla tonów 30/80/120 Hz przy 48 kHz, T-TRIG-03 liczony przez Hilberta jest obciążony, a T-DRV-05 nie określa kroku. Poprawki są w §6.
 
 ## 1. Zakres, metoda i odtworzenie
 
 - **Moduły** (`proto/subgen_proto/`): `util` (pomiary), `signals` (SIG-01…19), `svf` (sekcje TPT/Cytomic, projekty BW/LR/Bessel), `envelope`, `band` (pasmo źródłowe x_b), `divide`, `track`, `trigger`, `harmonic`, `drive`, `hilbert`, `align`, `lfe`, `dynamics`, `render`. Razem ~1900 linii plus ~2300 linii testów.
-- **Testy:** `proto/tests/` (216). **Eksperymenty:** `proto/experiments/p2_01…p2_11` zapisują JSON do `proto/out/p2_NN.json` (poza gitem) i wykresy do `docs/img/p2_NN_*.png`.
+- **Testy:** `proto/tests/` (251; przy bramce 216). **Eksperymenty:** `proto/experiments/p2_01…p2_11` zapisują JSON do `proto/out/p2_NN.json` (poza gitem) i wykresy do `docs/img/p2_NN_*.png`.
 - **Odtworzenie:**
   ```
   PYTHONPATH=proto .venv/bin/python -W error -m unittest discover -s proto/tests -t proto
@@ -31,9 +31,10 @@ Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `pr
   ```
 - **Proces:**
   - TDD (test czerwony → implementacja → test zielony).
-  - Testy mutacyjne kluczowych zachowań; każdy mutant został wykryty.
+  - Testy mutacyjne kluczowych zachowań; każdy mutant został wykryty (skrypty były tymczasowe i nie zostały zachowane, więc przegląd D8 nie mógł tego sprawdzić).
   - Dziennik decyzji: pełna lista rozstrzygnięć w Załączniku C.
-  - Na końcu przegląd całej gałęzi, wykonany przeze mnie, bez niezależnego recenzenta (§9, decyzja D8). Przegląd znalazł dwa błędy w `render_file`; oba są naprawione z testami.
+  - Na końcu przegląd całej gałęzi, wykonany przeze mnie. Znalazł dwa błędy w `render_file`; oba są naprawione z testami.
+  - Potem niezależny przegląd D8 w osobnej sesji: 2 krytyczne, 5 ważnych i 13 drobnych ustaleń — wszystkie przetworzone (§11).
 - **Ograniczenia prototypu:**
   - Działa offline na całych buforach.
   - Nie obejmuje przetwarzania blokowego, wygładzania parametrów, wielokanałowości silników, strażników NaN ani wątków.
@@ -46,9 +47,9 @@ Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `pr
 | P2-01 | Filtry TPT/Cytomic | BW/LR/Bessel vs SciPy ≤ 0,01 dB (T-FILT-01, -04); Cytomic vs RBJ ≤ 0,05 dB (T-FILT-02) | 2,3·10⁻⁷ dB; 1,1·10⁻⁷ dB; pętla TPT vs analityka przy 15 Hz/192 kHz: 7·10⁻¹³; współczynniki float32: 0,175 dB (uzasadnia `double`) | PASS |
 | P2-01 | — | zmienność opóźnienia grupowego Bessela do fc/2 ≤ 1 % (T-FILT-04) | rząd 2: **2,02 %**, rzędy 4/8: 0,01/0,00 % | INFO → K-17 |
 | P2-02 | DIVIDE | częstotliwość Sub −1/−2 ≤ 0,1 % (T-DIV-01) | ~2·10⁻⁹ % (44,1/48/96 kHz, 30–200 Hz) | PASS |
-| P2-02 | — | ciągłość, polaryzacja, czystość sinusa (shape 0, 3f/2 ≤ −18 dB) | \|Δy\| ≤ \|Δx\|; 100/100 uderzeń, korelacja 1,0; 3f/2 −23,4 dB (natywnie −4,4 dB) | PASS |
-| P2-02 | — | bramka pewności (T-DIV-04/05) | stopa: otwarta 100 % (reguła ze SPEC: 0 %); SNR w paśmie 20/15/10/5/3 dB → otwarta 99/68/27/8/4 %; szum losowy ≤ 1,5 %; akord 0 % | PASS (po korekcie K-02) |
-| P2-03 | TRACK | błąd ≤ 0,5 %, 0 błędów oktawowych (T-TRK-01) | MPM: najgorsza mediana 1,8 centa, 0 błędów (SIG-01/04/05); YIN: 36 klatek z błędem oktawowym (SIG-05) | PASS (MPM) |
+| P2-02 | — | ciągłość, polaryzacja, czystość sinusa (shape 0, 3f/2 ≤ −18 dB) | \|Δy\| ≤ \|Δx\|; natywny y1: 100/100 uderzeń, korelacja 1,0; **wyjście domyślne (popr. D8): 20/20 przy ciszy, szumie −90…−60 dBFS i buczeniu, korelacja 0,9995; przy nakładających się ogonach y1 20/20**; 3f/2 −23,4 dB (natywnie −4,4 dB) | PASS |
+| P2-02 | — | bramka pewności (T-DIV-04/05) | stopa: otwarta 100 % w 50–300 ms (reguła ze SPEC: 0 %); **pierwsze 40 ms stopy: 94–96 % energii suba (przed poprawką D8: 0,5 %)**; SNR w paśmie 20/15/10/5/3 dB → otwarta 99/68/27/8/4 %; szum losowy ≤ 1,5 %; akord 0 % (Live po 100 ms: −76 dB) | PASS (po K-02 i R1) |
+| P2-03 | TRACK | błąd ≤ 0,5 %, 0 błędów oktawowych (T-TRK-01) | MPM: najgorsza mediana 1,7 centa, 0 błędów przy dopasowanym opóźnieniu (SIG-01/04/05); bez dopasowania, tak jak używa ich oscylator: Mix 21 / Live 37 ramek > 600 centów na ~6,5 tys. — błędy śledzenia glissand, nie zła oktawa (popr. D8 M10); YIN: 38 klatek z błędem oktawowym (SIG-05) | PASS (MPM) |
 | P2-03 | — | opóźnienie glissanda 80→40 Hz (T-TRK-02 [P2]) | 43 ms przy oknie 83,5 ms (≈ W/2 + 1 ms) | INFO → granica 50 ms |
 | P2-03 | — | zamek fazy ≤ 15° (T-TRK-04) | PLL 5 Hz: 1,35° (czysty sygnał), 5,9° (SNR 10 dB) | PASS |
 | P2-04 | TRIGGER | onset ≤ 1 próbka / Live ≤ 2 ms (T-TRIG-01) | 0,49 próbki (stały bias −0,486, rozrzut 0,0067); latencja 0,18 ms | PASS |
@@ -57,16 +58,16 @@ Plan: `docs/superpowers/plans/2026-10-19-subgen-phase2-prototype.md` · Kod: `pr
 | P2-05 | — | IMD dwóch tonów (T-HARM-02, informacyjnie) | 72 % mocy wyjścia to intermodulacja (najsilniejsza linia: f1+f2) | INFO |
 | P2-06 | Drive | harmoniczne vs wzorzec 16× ≤ 1 dB (T-DRV-01) | Live 0,11 / Mix 0,03 / Print 0,01 dB | PASS |
 | P2-06 | — | ADAA vs naiwny (T-DRV-02), Auto Gain ±0,5 dB (T-DRV-03), DC ≤ −80 dBFS (T-DRV-04), drive 0 bit-exact (T-DRV-05) | aliasing o 7,8–9,7 dB niższy niż bez ADAA (TEST_PLAN wymagał ≥ 12 dB informacyjnie → K-21); 0,036 dB; −291 dBFS; ✓ | PASS (T-DRV-02: INFO) |
-| P2-06 | — | aliasing Live ≤ −80, Mix ≤ −90, Print ≤ −90 dB (T-ALIAS-01 [P2]) | Hard 100 %: Live **−55**, Mix **−77**, Print −95 dB; Fold: brak aliasingu | **2× FAIL** → K-09, D2 |
+| P2-06 | — | aliasing Live ≤ −80, Mix ≤ −90, Print ≤ −90 dB (T-ALIAS-01 [P2]) | pełne pasmo, Hard 100 %: Live **−55**, Mix **−77**, Print −95 dB. Pasmo suba (D2), wejścia −6…+12 dBFS, wszystkie tryby: Live −90,2, Mix −93,2, Print −93,2 dB (po R3) | **2× FAIL** wg SPEC 0.1 → K-09, D2; od D2: PASS |
 | P2-07 | Faza | para Hilberta ≤ 1° (T-FILT-05); rotacja ±1° / ±0,05 dB (T-PHS-02); polaryzacja (T-PHS-01) | 3 sekcje/gałąź: 0,86°, 4: 0,133°; rotacja 0,133° / 0,010 dB; x + (−x) = 0 | PASS |
 | P2-07 | — | Auto-Align ±15° (T-PHS-03) | 48 syntetycznych optimów w 7,5°; brak nakładania → pewność 0; SIG-18: siatka 15° traci ≤ 0,12 dB | PASS |
 | P2-08 | LFE/FIR | 24 dB/okt → ≥ 14 dB przy 1,5·fc (T-LFE-01); opóźnienie wyświetlane vs zmierzone ±2 % (T-LFE-07) | 14,31 dB (szum szerokopasmowy); 0,0005 % | PASS |
-| P2-08 | — | FIR: symetria, ≤ 0,1 dB, opóźnienie (N−1)/2 (T-FILT-06) | β 3: 0,061 dB ✓; β 8 (wartość ze SPEC): **0,194 dB** | PASS / **FAIL (SPEC)** → K-12 |
+| P2-08 | — | FIR: symetria, ≤ 0,1 dB, opóźnienie (N−1)/2 (T-FILT-06) | β 3: 0,061 dB ✓; β 8 (wartość ze SPEC 0.1): **0,194 dB**; LP przy N_LIN: domyślne ≤ 0,082 dB przy wszystkich fs | PASS / **FAIL (SPEC 0.1)** → K-12 |
 | P2-09 | Dynamika | krzywa statyczna ≤ 0,1 dB (T-CMP-01); czasy ±10 % (T-CMP-03); bramka ±10 % (T-GATE-01) | ✓; ✓; 0,05 % | PASS |
 | P2-09 | — | THD ≤ −60 dB przy GR 6 dB (T-CMP-02) | detektory bez tętnień: −124 dB; RMS jednobiegunowy + reguła: **−56,9 dB** | PASS / **FAIL (SPEC)** → K-13 |
-| P2-09 | — | limiter: sufit (T-LIM-01); THD (T-LIM-02 [P2]) | przekroczenie 3·10⁻¹⁶; THD od −15 (Live) do −71 dB | PASS / INFO |
-| P2-10 | Latencja | L_look ze SPEC wyrównuje TRACK od 55 Hz; `align_ms` kompensuje tor sub | 25 ms → dopiero od 100 Hz; tor sub przy 40 Hz = 25,9 ms > 20 ms | **2× FAIL** → K-05, K-15 |
-| P2-11 | Odsłuch | UC1–UC5, dopasowanie głośności, sub Off = wejście, determinizm, LFE | 22 pliki, 15 MB; UC3 bit-exact; UC4 −191 dB; UC5 tylko FL/FR/LFE, separacja 57 dB | PASS |
+| P2-09 | — | limiter: sufit (T-LIM-01); THD (T-LIM-02 [P2]) | przekroczenie 3·10⁻¹⁶ (z próbek; true-peak 4× niezmierzony — popr. D8 M9, Faza 3); THD od −15 (Live) do −71 dB, granice Mix −35 / Print −50 dB asertowane | PASS (częściowo) / PASS |
+| P2-10 | Latencja | L_look ze SPEC wyrównuje TRACK od 55 Hz; `align_ms` kompensuje tor sub | 25 ms → dopiero od 100 Hz; tor sub przy 40 Hz = 24,1 ms > 20 ms (domyślny łańcuch, popr. D8 M2; wcześniej podawałem 25,9 ms) | **2× FAIL** wg SPEC 0.1 → K-05, K-15 |
+| P2-11 | Odsłuch | UC1–UC5, dopasowanie głośności, sub Off = wejście, determinizm, LFE | 22 pliki, 15 MB; UC4 −191 dB; UC5 tylko FL/FR/LFE, separacja 57 dB. Kontrola „UC3 bit-exact” była tautologią (popr. D8 I5.1) — tożsamość przy sub Off sprawdzi T-SUM-01 w C++ | PASS |
 
 Wykresy: [filtry](img/p2_01_responses.png) · [DIVIDE](img/p2_02_divide.png) · [TRACK](img/p2_03_track.png) · [TRIGGER](img/p2_04_trigger.png) · [HARMONIC](img/p2_05_harmonic.png) · [Drive](img/p2_06_drive.png) · [faza](img/p2_07_phase.png) · [LFE/FIR](img/p2_08_lfe.png) · [dynamika](img/p2_09_dynamics.png)
 
@@ -75,6 +76,7 @@ Wykresy: [filtry](img/p2_01_responses.png) · [DIVIDE](img/p2_02_divide.png) · 
 **DIVIDE — licznik (odwracanie znaku) czy „phase halving” (Hilbert).**
 Wybieram **licznik jako podstawę** plus tor wygładzający: LP 4. rzędu, który śledzi 0,87·f_est. Licznik ma zerową latencję, a sub jest sprzężony z kształtem fali, więc polaryzacja jest identyczna przy każdym uderzeniu, a częstotliwość dokładna.
 „Phase halving” daje czystsze widmo (3f/2 na −123 dB) i ~3× mniejszy błąd częstotliwości w szumie. Wymaga jednak sygnału analitycznego (FIR Hilberta, czyli dodatkowej latencji), dlatego proponuję go co najwyżej jako wariant dla Print (COULD).
+**Popr. D8 (R1, R2, R5):** dzielnik działa tylko w nucie (granice z aktywności S4 i z ataku 12 dB) i zaczyna każdą nutę od +1. Od początku nuty pewność jest tymczasowo 1, a w Mix/Print bramka czyta ją z wyprzedzeniem. `shape` przesuwa odcięcie filtra wygładzającego zamiast mieszać dwa tory.
 
 **TRACK — detektor i tryb fazy.**
 - **MPM (NSDF)** na ramkach „świadomych onsetu” (cisza przed nutą jest wycinana).
@@ -96,6 +98,8 @@ Cel |H|, okno Kaisera β = 3. Długości dla 0,1 dB (HP 20 Hz + LP 120 Hz):
 | N (β 3) | 12 130 | 15 256 | 30 475 | 60 924 |
 | latencja | 137,5 ms | 158,9 ms | 158,7 ms | 158,7 ms |
 
+Po D5 Linear Phase obejmuje tylko LP. Jądro ma stałą długość N_LIN = 4096·2^⌈log2(fs/48 kHz)⌉ + 1 (4097 przy 48 kHz), żeby latencja nie zależała od `sub_lp_freq`. Domyślne LP (BW 24 przy 120 i 140 Hz) mieszczą się w 0,082 dB przy wszystkich fs. Tabela pokrycia dla innych nachyleń i narożników jest w `proto/out/p2_08.json` (P2-08).
+
 Koszt wyznacza narożnik HP (przy 48 kHz):
 
 | HP | 20 Hz | 30 Hz | 40 Hz | 60 Hz | sam LP 120 Hz |
@@ -106,8 +110,8 @@ Koszt wyznacza narożnik HP (przy 48 kHz):
 4 sekcje 1. rzędu na gałąź (razem 8 all-passów): błąd 0,133°, amplituda rotacji ±0,010 dB, identycznie przy 44,1/48/96 kHz. Bieguny są w Załączniku B.
 
 **Dynamika.**
-- Detektor RMS: średnia kwadratowa w oknie max(10 ms, 1,5·T_sub), a potem hold w tym samym oknie.
-- Detektor Peak: hold |x| w tym samym oknie.
+- Detektor RMS: średnia kwadratowa w oknie max(10 ms, 1,5·T_sub), a potem hold w tym samym oknie; minimalny atak ¼ okresu suba (popr. D8, R4).
+- Detektor Peak (domyślny od R4): hold |x| w tym samym oknie.
 - Auto release: krótsze tłumienie zwalnia w 50 ms, długie w 500 ms (wolna gałąź ma atak 150 ms).
 - Limiter: lookahead złożony z min-hold, release i wygładzania Hanna — z konstrukcji nie przekracza sufitu.
 - Live: c·tanh(x/c) z ADAA.
@@ -118,14 +122,14 @@ Koszt wyznacza narożnik HP (przy 48 kHz):
 |---|---|---|
 | L_look Live / Mix / Print | **0 / 47 / 65 ms** (TRACK 45/55 + kompresor 0/5 + limiter 2/5) | P2-03, P2-10 |
 | L_os | odczyt `getLatencyInSamples()` z JUCE w Fazie 3; prototyp (FIR Kaisera 110 dB) daje 72 próbki — to górne ograniczenie | P2-06, P2-10 |
-| L_lin | (N−1)/2 przy **nieparzystym N** (tabela §3) | P2-08 |
-| L_total przy 48 kHz | Live 0; Mix 48,5 ms; Print 66,5 ms; Print + Linear Phase (HP 20 + LP 120) 225 ms | P2-10 |
-| TRACK | fs_d = fs/⌊fs/2000⌋ (2004,5 Hz przy 44,1 kHz); W = ⌈2,5·fs_d/max(range_lo, 20)⌉; hop 2 ms; próg MPM 0,9; pewność = clip((jasność − 0,6)/0,4); prior: okno ±25 %, 3 zgodne ramki, 5 ramek bez sygnału zeruje stan | P2-03 |
-| DIVIDE | pewność = 1 − min(1, mediana(r z 5 okresów)/0,15), gdzie r = \|T_k − (2T_{k−1} − T_{k−2})\|/T_{k−1}; bramka otwiera się przy pewności ≥ 0,2 + 0,6·conf_gate/100 i zamyka 0,2 niżej; przerwa ≥ max(2,5 okresu, 40 ms) zaczyna nową nutę; tryb Constant: maksimum kroczące z 1,25 okresu | P2-02 |
+| L_lin | (N_LIN − 1)/2 + 256 (partycja konwolucji FFT); N_LIN nieparzyste, stałe dla fs (§3) | P2-08 |
+| L_total przy 48 kHz | Live 0; Mix 48,5 ms; Print 66,5 ms; Print + Linear Phase (tylko LP, N_LIN) 114,5 ms | P2-10 |
+| TRACK | decymacja przyczynowa: Butterworth 8. rzędu 800 Hz, potem co D-ta próbka; fs_d = fs/⌊fs/2000⌋ (2004,5 Hz przy 44,1 kHz); W = ⌈2,5·fs_d/max(range_lo, 20)⌉; hop 2 ms; próg MPM 0,9; pewność = clip((jasność − 0,6)/0,4); prior: okno ±25 %, 3 zgodne ramki, 5 ramek bez sygnału zeruje stan | P2-03 |
+| DIVIDE | pewność = 1 − min(1, mediana(r z 5 okresów)/0,15), gdzie r = \|T_k − (2T_{k−1} − T_{k−2})\|/T_{k−1}; bramka otwiera się przy pewności ≥ 0,2 + 0,6·conf_gate/100 i zamyka poniżej max(próg − 0,2; próg/2) (popr. D8 I1); granice nut z aktywności S4 i z ataku 12 dB, reset polaryzacji przy przejściu przez zero (R2); od początku nuty pewność tymczasowo 1, w Mix/Print czytana 45/55 ms naprzód (R1); tryb Constant: maksimum kroczące z 1,25 okresu | P2-02 |
 | HARMONIC | obwiednia: max-hold z 1,5 okresu `range_lo`, potem atak 5 / release 60 ms; HP 15 Hz 2. rzędu | P2-05 |
-| Drive | oversampling: przepustowe do 0,45·fs, zaporowe ≥ 100 dB od 0,55·fs; Auto Gain: tabela w Załączniku A | P2-06 |
+| Drive | oversampling: przepustowe do 0,45·fs, zaporowe ≥ 100 dB od 0,55·fs; Auto Gain: tabela w Załączniku A; Fold: głębokość ograniczona do tej przy wejściu −6 dBFS (R3) | P2-06 |
 | Para Hilberta | 4 sekcje/gałąź, bieguny w Załączniku B | P2-07 |
-| Kompresor | detektory jak w §3; auto release 50 / 500 ms (wolna gałąź: atak 150 ms) | P2-09 |
+| Kompresor | detektory jak w §3, domyślny Peak (R4); auto release 50 / 500 ms (wolna gałąź: atak 150 ms) | P2-09 |
 | Limiter | lookahead 2 ms (Mix) / 5 ms (Print); THD przy wejściu sufit + 6 dB i release 100 ms: Mix ≤ −35 dB, Print ≤ −50 dB (granice T-LIM-02) | P2-09 |
 | LFE | domyślnie Butterworth 24 dB/okt przy 120 Hz | P2-08 |
 | `align_ms` | 0–40 ms + akcja Auto (opóźnienie grupowe toru sub przy f_sub1) | P2-10 |
@@ -133,14 +137,14 @@ Koszt wyznacza narożnik HP (przy 48 kHz):
 
 ## 5. Sześć kontroli FAIL — co oznaczają
 
-Wszystkie sprawdzają brzmienie SPEC; żadna nie wskazuje błędu w prototypie.
+Stan przy bramce. Wszystkie sprawdzały brzmienie SPEC 0.1; żadna nie wskazywała błędu w prototypie. Po zaakceptowaniu korekt są w eksperymentach informacjami.
 
 1. **T-ALIAS-01, Live (ADAA) ≤ −80 dB.** Hard przy drive 100 % daje −55 dB (25 % → −75,5; 50 % → −68,7 dB). Sam ADAA 1. rzędu nie wystarczy przy bardzo twardym przesterowaniu. → K-09, D2.
 2. **T-ALIAS-01, Mix (ADAA + 2×) ≤ −90 dB.** Hard przy drive 100 % daje −77 dB (do 50 % spełnia: −90,7 dB). → K-09, D2.
 3. **T-FILT-06 z β = 8** (wartość ze SPEC) przy 16 384 tapach: 0,194 dB zamiast ≤ 0,1 dB. Z β = 3 jest 0,061 dB. → K-12.
 4. **T-CMP-02 z jednobiegunowym detektorem RMS i regułą tętnień:** −56,9 dB zamiast ≤ −60 dB. Detektor zdefiniowany w K-13 daje −124 dB.
 5. **L_look Mix 25 ms** wyrównuje TRACK dopiero od 100 Hz, a nie od 55 Hz (A1). → K-05, D3.
-6. **Zakres `align_ms` 0–20 ms** nie pokrywa naturalnego opóźnienia toru sub przy 40 Hz (25,9 ms). → K-15, D6.
+6. **Zakres `align_ms` 0–20 ms** nie pokrywa naturalnego opóźnienia toru sub przy 40 Hz (24,1 ms na domyślnym łańcuchu; wcześniej podawałem 25,9 ms). → K-15, D6.
 
 ## 6. Proponowane korekty SPEC i TEST_PLAN
 
@@ -148,21 +152,21 @@ Naniosę je dopiero po Twoim OK, osobnym commitem. Do bramki SPEC pozostaje bez 
 
 | # | Gdzie | Problem | Propozycja | Dowód |
 |---|---|---|---|---|
-| K-01 | SPEC §7.6 | Wzór Q Butterwortha w formie cos jest poprawny tylko dla rzędów parzystych (n = 3 daje 0,577 zamiast 1) | Q = 1/(2·sin((2i−1)π/(2n))) | P2-01 |
-| K-02 | SPEC §6.2, TEST_PLAN T-DIV-05 | Reguła pewności „zmiana okresu > 15 %, ≥ 3 skoki w 1 s” zamyka bramkę na każdej stopie (spadek 16–20 % na okres) i migocze przy SNR 20 dB | Nieregularność względem trendu (mediana z 5 okresów) i histereza bramki (§4). T-DIV-05: akord −40 dB; szum losowy: otwarcie ≤ 3 % czasu, sub ≥ 12 dB poniżej szumu | P2-02 |
+| K-01 | SPEC §7.6 | Wzór Q Butterwortha w formie cos (stał w planie Fazy 2; SPEC 0.1 podawał tylko wartości i nie miał Q dla n = 16 — popr. D8 M8) jest poprawny tylko dla rzędów parzystych (n = 3 daje 0,577 zamiast 1) | Q = 1/(2·sin((2i−1)π/(2n))) | P2-01 |
+| K-02 | SPEC §6.2, TEST_PLAN T-DIV-05 | Reguła pewności „zmiana okresu > 15 %, ≥ 3 skoki w 1 s” zamyka bramkę na każdej stopie (spadek 16–20 % na okres) i migocze przy SNR 20 dB | Nieregularność względem trendu (mediana z 5 okresów) i histereza bramki (§4). T-DIV-05: akord −40 dB; szum losowy: otwarcie ≤ 3 % czasu, sub ≥ 12 dB poniżej szumu | P2-02; zmienione po D8 (R1, R2, I1 — §11) |
 | K-03 | SPEC §6.2 (Constant) | Peak follower z atakiem 1 ms przestrzeliwuje poziom | Dzielić przez maksimum kroczące \|x\| z 1,25 okresu f_ref | P2-02 |
 | K-04 | SPEC §6.3 | (a) surowa jasność NSDF dla szumu pasmowego to 0,45–0,56, więc nie może być pewnością; (b) przy oknie stałej długości pewność rośnie powoli po onsecie; (c) ocena kandydatów f/2 i 2f w oknie ±25 % wciąga kwinty i seksty; (d) okno < 2 okresów nie mieści f_min | (a) kalibracja (§4); (b) ramki świadome onsetu, czyli wycięcie ciszy i lag ≤ połowa reszty; (c) hold + 3 zgodne ramki, również na starcie; (d) W ≥ 2 okresy | P2-03 |
 | K-05 | SPEC §4.4 | L_look 25/50 ms wyrównuje TRACK tylko od 100/45 Hz | 47/65 ms, czyli TRACK + kompresor + limiter (stopnie z wyprzedzeniem sumują się) | P2-03, P2-10 |
-| K-06 | SPEC §6.4 | Follow „mnoży przez e_rms” bez normalizacji; Legato „obwiednia od początku” daje skok amplitudy do 0 | Follow: e_rms dzielone przez jego maksimum w uderzeniu, = 1 do tego maksimum, potem tylko maleje. Legato: atak od bieżącej amplitudy. Opcjonalnie: +0,5 próbki do czasu onsetu (stały bias follower'a). Uwaga w UI: ponowne uzbrojenie trwa ~15 ms·ln(szczyt/próg) + hold, czyli przy głośnej stopie ~67 ms, dłużej niż lockout 60 ms | P2-04 |
+| K-06 | SPEC §6.4 | Follow „mnoży przez e_rms” bez normalizacji; Legato „obwiednia od początku” daje skok amplitudy do 0 | Follow: e_rms dzielone przez jego maksimum w uderzeniu, = 1 do tego maksimum, potem tylko maleje. Legato: atak od bieżącej amplitudy. Opcjonalnie: +0,5 próbki do czasu onsetu (stały bias follower'a). Uwaga w UI: ponowne uzbrojenie trwa ~15 ms·ln(szczyt/próg) + hold, czyli przy głośnej stopie ~67 ms, dłużej niż lockout 60 ms | P2-04; po D8: Follow do bieżącego maksimum od onsetu (M4), atak ≥ 0,5 ms (M5) |
 | K-07 | SPEC §6.5 | Obwiednia e_pk_s (peak follower 5/60 ms) siedzi 1,05 dB pod amplitudą i faluje 0,2–0,7 dB, przez co wagi są błędne o 13,6 dB | Max-hold z 1,5 okresu `range_lo`, potem 5/60 ms; HP 15 Hz 2. rzędu | P2-05 |
 | K-08 | SPEC §7.3 | Auto Gain nie obejmuje α, DC ani Tone; wzór na bias jest addytywny (Tube przy balance −100 → 0,85); kryterium T-DRV-05 „skok ≤ 10⁻⁶” nie podaje kroku | Auto Gain na RMS(AC) mieszanki α (Tone — według D4). Tube = Soft z biasem 0,35. T-DRV-05: zmiana wyjścia proporcjonalna do kroku parametru (zmierzono 4–7·10⁻³ na 0,1 % drive) | P2-06 |
 | K-09 | SPEC §4.5, TEST_PLAN T-ALIAS-01 | Tony 30/80/120 Hz przy 48 kHz są ślepe: fs/f0 jest całkowite, więc każdy alias ląduje na harmonicznej (naiwny shaper mierzy −255 dB). Cele −80/−90 dB są nieosiągalne dla Hard w Live/Mix | Mierzyć składowe nieharmoniczne dla tonów 31/81/121 Hz. Kryterium według D2: (a) po LP toru sub (ADAA: −129 dB) albo (b) pełnopasmowe progi Live −55 / Mix −75 / Print −90 dB | P2-06 |
-| K-10 | SPEC §7.7 | Kryteria 1° i ±0,05 dB są sprzeczne (±0,05 dB wymaga ≤ 0,66°); θ = 0 to gałąź A, a nie tożsamość; znak w zapisie | 4 sekcje na gałąź (0,133°). Opis: θ = 0 ma fazę i opóźnienie gałęzi A. Zapis „cos θ·a − sin θ·b” z b *opóźnionym* o 90° to ta sama operacja co „cos θ·A + sin θ·B” z B *wyprzedzającym* | P2-07 |
+| K-10 | SPEC §7.7 | Kryteria 1° i ±0,05 dB są niewystarczające (±0,05 dB wymaga ≤ 0,66°; popr. D8 M8); θ = 0 to gałąź A, a nie tożsamość; znak w zapisie | 4 sekcje na gałąź (0,133°). Opis: θ = 0 ma fazę i opóźnienie gałęzi A. Zapis „cos θ·a − sin θ·b” z b *opóźnionym* o 90° to ta sama operacja co „cos θ·A + sin θ·B” z B *wyprzedzającym* | P2-07 |
 | K-11 | SPEC §8.B | Auto-Align liczy na subie *przed* rotacją, a stopień rotacji działa na gałęzi A, więc wynik nie zgadza się z tym, co zrobi stopień (na SIG-18 różnica do ~240°) | Analizować sub *po* gałęzi A. Kanonicznie \|θ\| ≤ 90° i odwrócenie polaryzacji zamiast ±180°. Remisy rozstrzygać na korzyść tożsamości. Pewność = najlepszy vs mediana | P2-07 |
-| K-12 | SPEC §7.6, T-FILT-06 | Cel \|H\|² podwaja nachylenie i daje −6 dB w narożniku; β ≈ 8 nie trzyma 0,1 dB przy 16 384 tapach; parzyste N daje opóźnienie połówkowe; limit 32 768 nie wystarcza przy 192 kHz | Cel \|H\|, β = 3, N = 2^k + 1 (nieparzyste); długości z §3; zakres Linear Phase według D5 | P2-08 |
-| K-13 | SPEC §7.4 | „Reguła tętnień” nie usuwa zniekształceń w stanie ustalonym, a na onsecie bywa szkodliwa (Peak: −46 dB z regułą wobec −57 dB bez niej) | Zdefiniować detektory bez tętnień (§3); reguła według D7; auto release 50/500 ms; w T-CMP-03 dopisać, że okno detektora dodaje się do release | P2-09 |
+| K-12 | SPEC §7.6, T-FILT-06 | Cel \|H\|² podwaja nachylenie i daje −6 dB w narożniku; β ≈ 8 nie trzyma 0,1 dB przy 16 384 tapach; parzyste N daje opóźnienie połówkowe; limit 32 768 nie wystarcza przy 192 kHz | Cel \|H\|, β = 3, N nieparzyste; zakres według D5 (tylko LP) — stałe N_LIN = 4096·2^⌈log2(fs/48 kHz)⌉ + 1 (§3; popr. D8 M3: wcześniej trzy różne reguły długości) | P2-08 |
+| K-13 | SPEC §7.4 | „Reguła tętnień” nie usuwa zniekształceń w stanie ustalonym, a na onsecie bywa szkodliwa (Peak: −46 dB z regułą wobec −57 dB bez niej) | Zdefiniować detektory bez tętnień (§3); reguła według D7; auto release 50/500 ms; w T-CMP-03 dopisać, że okno detektora dodaje się do release. Po D8 (R4): domyślny Peak, RMS z minimalnym atakiem ¼ okresu suba | P2-09 |
 | K-14 | SPEC §7.8 | Konstrukcja lookahead i granice THD nie są określone | Min-hold → release → wygładzanie Hanna, opóźnienie dokładnie round(lookahead·fs); granice T-LIM-02 z §4 | P2-09 |
-| K-15 | SPEC §9.2, PARAMETERS `align_ms` | Naturalne opóźnienie toru sub to 36,6 / 25,9 / 19,9 / 15,1 ms przy 30 / 40 / 50 / 80 Hz | Zakres 0–40 ms + akcja Auto; ewentualnie HP pasma źródłowego 2. rzędu | P2-10 |
+| K-15 | SPEC §9.2, PARAMETERS `align_ms` | Naturalne opóźnienie toru sub to 34,8 / 24,1 / 19,8 / 12,2 ms przy 30 / 40 / 50 / 80 Hz (domyślny łańcuch; popr. D8 M2 — wcześniej 36,6 / 25,9 / 19,9 / 15,1) | Zakres 0–40 ms + akcja Auto; ewentualnie HP pasma źródłowego 2. rzędu | P2-10 |
 | K-16 | SPEC_IO_UI §4 | Domyślny filtr LFE nie jest określony liczbowo; parametry enkodera to założenie | Butterworth 24 dB/okt przy 120 Hz. Uwaga: ATSC A/52 podaje tylko rząd (8) i 120 Hz — 0,1 dB / 80 dB to założenie | P2-08 |
 | K-17 | TEST_PLAN T-FILT-04 | Bessel 2. rzędu ma 2,02 % zmienności opóźnienia do fc/2 | Kryterium ≤ 1 % tylko dla rzędów 4 i 8; dla rzędu 2 ≤ 2,5 % | P2-01 |
 | K-18 | TEST_PLAN T-TRIG-02/03/04 | Hilbert na zanikającym chirpie daje 3–8 % i 0,3–0,7 dB błędu; globalna druga różnica wykrywa „klik” na zagięciu ataku; test rozmiarów bloków nie da się zrobić offline | T-TRIG-03: połowy okresu między przejściami przez zero i próbki szczytowe. T-TRIG-04: druga różnica w oknie ±1 ms wokół retriggera. T-TRIG-02: rozmiary bloków w C++ | P2-04 |
@@ -173,19 +177,20 @@ Naniosę je dopiero po Twoim OK, osobnym commitem. Do bramki SPEC pozostaje bez 
 ## 7. Ryzyka i ograniczenia
 
 - **TRACK jest wolny na onsetach** (2 okresy) i nie śledzi szybkich spadków wysokości. Wymaga L_look ≥ 47/65 ms, a w Live sub wchodzi z opóźnieniem. Do stopy i 808 zostają DIVIDE i TRIGGER.
-- **Aliasing Hard w Live/Mix** przy wysokim drive (−55/−77 dB pełnopasmowo). Po LP toru sub jest nieistotny (−129 dB), ale tryb LP przy `sub_lp_freq` ustawionym wysoko go odsłoni.
+- **Aliasing Hard w Live/Mix** przy wysokim drive (−55/−77 dB pełnopasmowo). W paśmie suba jest nieistotny (≤ −90 dB także przy wejściach do +12 dBFS), ale `sub_lp_freq` ustawiony wysoko go odsłoni.
+- **DIVIDE w Live przy nakładających się uderzeniach** (popr. D8): uderzenie nad ogonem poprzedniego jest wykrywane ~7 ms po początku, więc jego pierwsze ~7 ms ma starą polaryzację. W Mix/Print lookahead to usuwa.
 - **HARMONIC przy polifonii**: 72 % mocy to intermodulacja. Nadaje się do subów monofonicznych i ustalonych, co SPEC już zaznacza.
 - **Linear Phase z HP 20 Hz** kosztuje 140–160 ms latencji.
 - **Opóźnienie toru sub** (26 ms przy 40 Hz) przekracza obecny zakres `align_ms`.
 - **Rzeczywiste latencje oversamplerów JUCE** nie są zmierzone; prototyp podaje górne ograniczenie.
 - **Filtr enkodera LFE** to założenie (0,1 dB / 80 dB).
 - **Prototyp jest offline**: brak przetwarzania blokowego, wygładzania parametrów, strażników NaN i wielokanałowości silników. To zakres testów C++ w Fazie 3.
-- **Przegląd kodu wykonałem sam.** Niezależny recenzent jest opcją według D8.
-- Drobne usterki odłożone (kod prototypu, nie ścieżka użytkownika): limiter rzuca błąd, gdy lookahead jest dłuższy niż bufor; `lfe_51` wymaga feedu LFE ≥ długości frontu; `harmonic` rzuca błąd przy pustym wejściu; kompresor i bramka przyjmują f_sub1 = 0 (dzielenie przez zero — wtyczka ogranicza do ≥ 20 Hz).
+- **Przegląd kodu:** mój własny, potem niezależny D8 (§11).
+- Drobne usterki odłożone (kod prototypu, nie ścieżka użytkownika): `lfe_51` wymaga feedu LFE ≥ długości frontu; kompresor i bramka przyjmują f_sub1 = 0 (dzielenie przez zero — wtyczka ogranicza do ≥ 20 Hz). Krótkie bufory w limiterze i puste wejście w HARMONIC naprawiłem przy poprawkach D8 (M6).
 
 ## 8. Odsłuch
 
-- Pliki: `renders/` (24-bit, 48 kHz), opis w `renders/README.txt`.
+- Pliki: `renders/` (24-bit, 48 kHz), opis w `renders/README.txt`. Przeliczone po poprawkach D8 (2026-10-21): DIVIDE zachowuje teraz początek każdej stopy, a kompresor UC3 używa detektora Peak. TRACK w UC2 działa w fazie Free, nie w domyślnym Locked (popr. D8 M12).
 - **A** = dry. **B** = dry + sub, dopasowane do A w głośności ważonej A — B *nie* jest głośniejsze, więc słuchaj masy, głębi, zwartości i wysokości, nie poziomu. **W** = sam sub.
 - Dry jest opóźnione o opóźnienie grupowe pasma źródłowego, tak jak zrobi to `align_ms`. Do odsłuchu potrzebne są monitory albo słuchawki schodzące do 30 Hz.
 - **UC1, stopa:** DIVIDE i TRIGGER. Szukaj masy 35–50 Hz bez rozmycia kliku i identycznych uderzeń.
@@ -224,6 +229,31 @@ Po Twoim OK:
    - M4: silniki;
    - M5: tor sub;
    - M6: instalatory i release (draft), spike'i SPK-2/4/6.
+
+## 11. Poprawki po niezależnym przeglądzie D8 (2026-10-21)
+
+Niezależny przegląd (osobna sesja, tylko odczyt) znalazł 2 ustalenia krytyczne, 5 ważnych i 13 drobnych. Pełny tekst: `.superpowers/sdd/2026-10-19-subgen-phase2-prototype/final-review-independent.md` (poza gitem). Kluczowe ustalenia sprawdziłem własnymi sondami — wszystkie się potwierdziły. Pięć zmieniało zaakceptowane decyzje; przyjąłeś rekomendacje R1–R5. Resztę poprawiłem sam. Każda poprawka ma test, który przed nią nie przechodził.
+
+| Ustalenie | Problem | Poprawka | Wynik po poprawce |
+|---|---|---|---|
+| C1 (R1) | bramka DIVIDE wycinała pierwsze ~40 ms każdej stopy (zostawało 0,5 % energii suba) | od początku nuty pewność tymczasowo 1, aż trzy okresy dadzą pierwszą resztę trendu; w Mix/Print bramka czyta pewność 45/55 ms naprzód; niepotwierdzone otwarcie zamyka się w 10 ms | pierwsze 40 ms: 94 % (Live), 95,5 % (Mix, Print) energii; akord po 100 ms: −76 dB (Live) |
+| C2 (R2) | polaryzacja stała tylko przy cyfrowej ciszy (szum −90 dBFS: 12/20, buczenie: naprzemiennie) | granice nut z aktywności S4 i z ataku 12 dB (moduł `activity`); dzielnik działa tylko w nucie; reset s1/s2 przy przejściu przez zero po końcu nuty i przed jej początkiem (Mix/Print), w Live rampa 0,5 ms przy wykryciu; usunięty nieudokumentowany próg −80,5 dBFS | 20/20 i korelacja 0,9995 przy ciszy, szumie −90…−60 dBFS i buczeniu (Mix i Live); przy nakładających się ogonach natywny sub 20/20, wyjście spójne między uderzeniami |
+| I1 | przy `conf_gate` 0 % bramka nigdy się nie zamykała | zamyka się poniżej max(próg − 0,2; próg/2) | szum po nucie: otwarta 0 % przy 0/1/50/100 % |
+| I2 (R3) | Fold przy wejściu +6 dBFS: −37 dB aliasingu w paśmie suba (Live) | głębokość Fold ograniczona do tej przy −6 dBFS (obwiednia wejścia: hold 1,5 okresu f_sub1, release 50 ms); do −6 dBFS wynik bit w bit bez zmian | wejścia −6…+12 dBFS, 5 trybów, 44,1/48 kHz: Live −90,2, Mix −93,2, Print −93,2 dB |
+| I3 (R4) | domyślny RMS miał najgorszy rozprysk na onsecie | domyślny detektor Peak; RMS z minimalnym atakiem ¼ okresu suba | Peak (atak ≤ 3 ms) ≤ −50,4 dB; RMS −42,1 dB |
+| I4 (R5) | `shape` 50 % ściszał sub o 3,1 dB | `shape` przesuwa odcięcie filtra wygładzającego (×32 przy 100 %) | poziom f/2 stały w granicach 0,05 dB |
+| I5 | kontrole bez mocy: UC3 (tautologia), T-LIM-02 bez granic, test ciszy przechodził z innego powodu | UC3 jako informacja (sprawdzi T-SUM-01 w C++); granice T-LIM-02 asertowane; test ciszy według `det_thresh` | testy |
+| M1 | okno kroczące nieprzyczynowe na początku bufora | wypełnienie stałą zamiast odbicia | test z impulsem w pierwszych próbkach |
+| M2 | opóźnienie toru sub liczone na niedomyślnym łańcuchu | pasmo przy częstotliwości źródła, HP 22 Hz, LP 140 Hz, gałąź A | 34,8 / 24,1 / 19,8 / 12,2 ms przy 30 / 40 / 50 / 80 Hz |
+| M3 | liczby N_LIN w SPEC 0.2 bez eksperymentu | P2-08 mierzy LP przy N_LIN | domyślne LP ≤ 0,082 dB przy wszystkich fs |
+| M4 | Follow (TRIGGER) normalizowany do maksimum całego uderzenia | bieżące maksimum od onsetu, tolerancja 1 dB na tętnienia RMS | test przyczynowości |
+| M5 | atak 0 przy fazie 90° = skok o pełną amplitudę | atak co najmniej 0,5 ms | największy skok ≤ 0,06 |
+| M6 | puste wejścia, bufor krótszy niż lookahead, Auto-Align na ciszy | strażniki | testy |
+| M7 | `render_file` obcinał koniec pliku | wyjście dłuższe o opóźnienie dry | test |
+| M8–M12 | sformułowania i liczby raportu | poprawione w tekście (oznaczenie „popr. D8”) | — |
+| M13 | odwołania do przyszłości (reset wstecz, f_est z przyszłości, decymacja zero-fazowa, f0 przed pierwszą estymatą) | wersje przyczynowe | testy |
+
+Po poprawkach: **251 testów** zielonych i **93 kontrole** w eksperymentach — wszystkie PASS. Pliki odsłuchowe przeliczone: w UC1 DIVIDE pierwsze 40 ms każdego uderzenia niesie 53–54 % energii suba. Wynikające z tego zmiany są w SPEC 0.3. Rozstrzygnięcia z tej rundy: Załącznik C, pozycje 45–51.
 
 ---
 
@@ -329,3 +359,13 @@ Każde z kosztem, jeśli okaże się błędne. Kolejność jak w dzienniku.
 
 43. Naprawione: `render_file` dodawał sub do surroundów i LFE pliku 5.1 — teraz para przednia, a `--channels` wybiera inne kanały.
 44. Naprawione: `render_file` nie wyrównywał dry, inaczej niż rendery — teraz `--align-ms` (domyślnie auto).
+
+**Poprawki po przeglądzie D8 (2026-10-21)**
+
+45. Początek nuty: szybka obwiednia porównywana z wolną sprzed 5 ms (bez tego wolna doganiała głośne uderzenie nad ogonem — tylko 9,5 dB); czas początku narastania = ostatnia chwila w granicach 1 dB od odniesienia. Koszt: uderzenie mniej niż 12 dB nad nakładającym się ogonem to ta sama nuta.
+46. Tymczasowe otwarcie bramki musi potwierdzić pierwsza prawdziwa pewność (≥ próg otwarcia), inaczej bramka zamyka się w 10 ms. Koszt: krótki błysk suba (~60 ms) na początku akordu w Live.
+47. Nakładające się ogony: polaryzację sprawdzam na natywnym y1 i spójności wyjścia; Live przełącza rampą 0,5 ms przy wykryciu. Koszt: w Live pierwsze ~7 ms takiego uderzenia mają starą polaryzację.
+48. Follow: tolerancja 1 dB poniżej bieżącego maksimum. Koszt: ogon Follow do 1 dB wyżej.
+49. Atak TRIGGER ≥ 0,5 ms. Koszt: krótszy atak niedostępny.
+50. Fold: ograniczenie głębokości przez obwiednię wejścia (hold 1,5 okresu f_sub1, release 50 ms). Koszt: obwiednia minimalnie moduluje wejście Fold (−93 dB w paśmie suba przy gorących wejściach zamiast ~−120 dB).
+51. Kontrole „dosłownie według SPEC 0.1” w eksperymentach stały się informacjami po zaakceptowaniu korekt. Koszt: brak.
