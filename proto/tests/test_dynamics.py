@@ -37,7 +37,8 @@ class TestStaticCurve(unittest.TestCase):
         # T-CMP-01: a 30 Hz sine in 3 dB steps; the RMS detector reads the peak level - 3.01 dB
         levels = np.arange(-36.0, 1.0, 3.0)
         x = _steps(30.0, levels, 1.0)
-        _, gr = dynamics.compressor(x, FS, thresh_db=-20.0, ratio=4.0, knee_db=6.0, attack_ms=10.0, release_ms=100.0, f_sub1=30.0)
+        _, gr = dynamics.compressor(x, FS, thresh_db=-20.0, ratio=4.0, knee_db=6.0, attack_ms=10.0, release_ms=100.0, f_sub1=30.0,
+                                    detect="rms")
         for i, lv in enumerate(levels):
             measured = float(np.median(gr[int((i + 0.7) * FS):int((i + 1.0) * FS)]))
             want = float(dynamics.static_gr_db(np.array([lv + 20.0 * np.log10(np.sqrt(0.5))]), -20.0, 4.0, 6.0)[0])
@@ -75,7 +76,7 @@ class TestCompressorDistortion(unittest.TestCase):
         self.assertLessEqual(self._thd(48.0, f_sub1=40.0, attack_ms=1.0, release_ms=10.0, detect="peak"), -60.0)
         x = signals.sine(48.0, FS, 3.0, level_db=-12.0)
         _, gr = dynamics.compressor(x, FS, thresh_db=-12.0 + 20.0 * np.log10(np.sqrt(0.5)) - 8.0, ratio=4.0, knee_db=0.0,
-                                    attack_ms=1.0, release_ms=10.0, f_sub1=40.0)
+                                    attack_ms=1.0, release_ms=10.0, f_sub1=40.0, detect="rms")
         self.assertAlmostEqual(float(np.median(gr[FS:2 * FS])), -6.0, delta=0.5)
 
     def test_ripple_prone_detectors_need_more_than_the_rule(self):
@@ -200,12 +201,15 @@ class TestLimiter(unittest.TestCase):
         d = int(round(0.005 * FS))
         np.testing.assert_allclose(y[d:], x[:-d], atol=1e-15)
 
-    def test_limiter_thd_reported_finite(self):
-        # T-LIM-02: 40 Hz, ceiling + 6 dB: the THD is measured (the bound comes from P2-09)
+    def test_limiter_thd_bounds(self):
+        # T-LIM-02 (D8 I5.2): 40 Hz, ceiling + 6 dB, release 100 ms: Mix (2 ms) <= -35 dB, Print (5 ms) <= -50 dB;
+        # Live (tanh) is only reported (P2: -15 dB).
         x = signals.sine(40.0, FS, 3.0, level_db=-1.0 + 6.0)
-        for kw in (dict(lookahead_ms=0.0, live=True), dict(lookahead_ms=2.0), dict(lookahead_ms=5.0)):
-            y = dynamics.limiter(x, FS, ceiling_db=-1.0, release_ms=100.0, **kw)
-            self.assertTrue(np.isfinite(util.thd_db(y[FS:2 * FS], FS, 40.0)), msg=str(kw))
+        for la, bound in ((2.0, -35.0), (5.0, -50.0)):
+            y = dynamics.limiter(x, FS, ceiling_db=-1.0, lookahead_ms=la, release_ms=100.0)
+            self.assertLessEqual(util.thd_db(y[FS:2 * FS], FS, 40.0), bound, msg=f"lookahead {la} ms")
+        y = dynamics.limiter(x, FS, ceiling_db=-1.0, lookahead_ms=0.0, release_ms=100.0, live=True)
+        self.assertTrue(np.isfinite(util.thd_db(y[FS:2 * FS], FS, 40.0)))
 
     def test_live_limiter_is_tanh_with_adaa(self):
         c = 10 ** (-1.0 / 20.0)
@@ -213,6 +217,36 @@ class TestLimiter(unittest.TestCase):
         y = dynamics.limiter(x, FS, ceiling_db=-1.0, lookahead_ms=0.0, release_ms=100.0, live=True)
         mid = 0.5 * (x + np.concatenate([[0.0], x[:-1]]))
         np.testing.assert_allclose(y, c * np.tanh(mid / c), atol=1e-6)  # ADAA ~ tanh at the half-sample midpoint
+
+
+
+def _onset_splatter_db(detect, attack_ms):
+    """Energy above 100 Hz in the first 80 ms of a 40 Hz tone that drives the compressor from 0 to ~18 dB GR."""
+    x = np.concatenate([np.zeros(FS // 2), signals.sine(40.0, FS, 1.0, level_db=-6.0)])
+    y, _ = dynamics.compressor(x, FS, thresh_db=-30.0, ratio=4.0, knee_db=0.0, attack_ms=attack_ms, release_ms=100.0,
+                               detect=detect, f_sub1=40.0, ripple_rule=False)
+    seg = y[FS // 2:FS // 2 + int(0.08 * FS)] * np.hanning(int(0.08 * FS))
+    spec = np.abs(np.fft.rfft(seg, 2 ** 16)) ** 2
+    fq = np.fft.rfftfreq(2 ** 16, 1.0 / FS)
+    return float(10 * np.log10(np.sum(spec[fq > 100.0]) / np.sum(spec)))
+
+
+class TestOnsetSplatter(unittest.TestCase):
+    """R4 (D8 I3): at a note onset the RMS detector splatters most (-39 dB at 1 ms attack vs -56 dB for Peak), so
+    Peak is the default and RMS keeps an attack floor of a quarter sub period."""
+
+    def test_peak_is_the_default_detector(self):
+        x = signals.sine(40.0, FS, 1.0, level_db=-6.0)
+        kw = dict(thresh_db=-20.0, ratio=4.0, knee_db=0.0, attack_ms=5.0, release_ms=50.0, f_sub1=40.0)
+        np.testing.assert_array_equal(dynamics.compressor(x, FS, **kw)[0], dynamics.compressor(x, FS, detect="peak", **kw)[0])
+
+    def test_peak_onset_splatter(self):
+        for attack in (0.1, 1.0, 3.0):
+            self.assertLessEqual(_onset_splatter_db("peak", attack), -50.0, msg=f"attack {attack} ms")
+
+    def test_rms_attack_floor_and_onset_splatter(self):
+        self.assertAlmostEqual(_onset_splatter_db("rms", 1.0), _onset_splatter_db("rms", 6.25), places=9)  # 0.25 T at 40 Hz
+        self.assertLessEqual(_onset_splatter_db("rms", 1.0), -40.0)
 
 
 if __name__ == "__main__":

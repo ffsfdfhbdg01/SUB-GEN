@@ -7,8 +7,10 @@ Detectors work over w = max(10 ms, 1.5 T_sub), T_sub = 1/f_sub1 (the Sub -1 freq
   'peak'         hold of |x| over w
   'rms_window'   SPEC-literal mean square over w without the hold: exact only at f_sub1 and its harmonics
   'rms_onepole'  one-pole mean square (time constant w), 'peak_instant' |x|: ripple-prone, kept for the P2 comparison
-The gain reduction is computed in dB from the static curve and smoothed by a one-pole with separate attack and release;
-the ripple rule floors them at 0.25 T_sub and 1.0 T_sub.
+The gain reduction is computed in dB from the static curve and smoothed by a one-pole with separate attack and release.
+Peak is the default detector (R4, D8 I3): at a note onset it splatters least (-56 dB above 100 Hz at a 1 ms attack, RMS
+-39 dB); 'rms' keeps an attack floor of 0.25 T_sub (-42 dB). The SPEC 0.1 ripple rule (attack >= 0.25 T_sub, release
+>= 1.0 T_sub for every detector) is kept only for the P2 comparison (ripple_rule=True).
 """
 from __future__ import annotations
 
@@ -79,13 +81,15 @@ def smooth_gr(target_db, fs: float, attack_ms: float, release_ms: float, start: 
 
 
 def compressor(x, fs: float, *, thresh_db: float, ratio: float, knee_db: float, attack_ms: float, release_ms: float,
-               detect: str = "rms", f_sub1: float = 40.0, ripple_rule: bool = True, auto_release: bool = False,
+               detect: str = "peak", f_sub1: float = 40.0, ripple_rule: bool = True, auto_release: bool = False,
                makeup_db: float = 0.0):
     """Returns (y, gr_db). auto_release mixes a 50 ms and a 500 ms release: the slow branch (attack 150 ms) only
     builds up under sustained reduction, and the deeper of the two branches wins."""
     x = np.asarray(x, dtype=np.float64)
     target = static_gr_db(detector_db(x, fs, detect, f_sub1), thresh_db, ratio, knee_db)
     att, rel = effective_times(attack_ms, release_ms, f_sub1, ripple_rule)
+    if detect == "rms":
+        att = max(att, 250.0 / f_sub1)  # R4: the RMS detector keeps an attack floor of a quarter sub period
     if auto_release:
         fast = smooth_gr(target, fs, att, effective_times(attack_ms, AUTO_FAST_MS, f_sub1, ripple_rule)[1])
         slow = smooth_gr(target, fs, max(att, AUTO_SLOW_ATTACK_MS), AUTO_SLOW_MS)
