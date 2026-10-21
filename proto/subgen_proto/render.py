@@ -65,11 +65,18 @@ def lfe_51(front_lr, lfe, fs: float, *, lp_hz: float = 120.0, order: int = 4) ->
     return out
 
 
-def divide_sub(x_b, fs: float, *, shape_pct: float = 0.0, conf_gate_pct: float = 50.0) -> np.ndarray:
-    """DIVIDE Sub -1: native shape blended with the tracking low-pass (shape 0 = sine), confidence-gated."""
-    res = divide.divide(x_b, fs)
-    y = divide.shape_blend(res.y1, divide.smooth_sub(res, fs, 1), shape_pct)
-    return divide.apply_confidence_gate(y, res.conf, conf_gate_pct, fs)
+LOOKAHEAD_S = {"live": 0.0, "mix": 0.045, "print": 0.055}  # engine lookahead E (SPEC §4.4)
+
+
+def divide_sub(x_b, fs: float, *, shape_pct: float = 0.0, conf_gate_pct: float = 50.0, quality: str = "mix") -> np.ndarray:
+    """DIVIDE Sub -1 through the tracking low-pass (shape 0 = sine, 100 = native), confidence-gated. In Mix and
+    Print the gate reads the confidence E ahead (R1), so it is open when the note starts."""
+    look = LOOKAHEAD_S[quality]
+    res = divide.divide(x_b, fs, live=quality == "live", lookahead_s=look)
+    y = divide.smooth_sub(res, fs, 1, shape_pct=shape_pct)
+    k = min(int(round(look * fs)), len(res.conf))
+    ahead = (lambda a, fill: np.concatenate([a[k:], np.full(k, fill)])) if k else (lambda a, fill: a)
+    return divide.apply_confidence_gate(y, ahead(res.conf, 0.0), conf_gate_pct, fs, ahead(res.provisional, False))
 
 
 def track_sub(x_b, fs: float, *, f_min: float = 30.0, lookahead_s: float = 0.045, shape_pct: float = 0.0,
