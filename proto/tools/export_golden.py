@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import envelope, signals
+from subgen_proto import activity, envelope, signals, svf
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -130,7 +130,34 @@ def export_envelope() -> dict[str, np.ndarray]:
     return out
 
 
-EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope}
+def source_band(x, fs: float, lo: float = 30.0, hi: float = 120.0, order: int = 4) -> np.ndarray:
+    """x_b with the exact TPT loop of the C++ SourceBand (HP sections, then LP sections); band.range_filter runs the
+    same designs through scipy's sosfilt, which rounds differently."""
+    return svf.process(svf.design_butter(order, lo, fs, "high") + svf.design_butter(order, hi, fs, "low"), x)
+
+
+def notes_inputs(fs: float = 48000) -> dict[str, np.ndarray]:
+    """Task 7: five SIG-03 hits through the source band: in silence, over xorshift band noise at -60 dBFS RMS, and
+    every 0.45 s over T60 1 s tails. tests/unit/test_engine_common.cpp builds the same inputs."""
+    hits = signals.kick(fs, n_hits=5, spacing=0.5, level_db=-6.0)
+    noise = signals.band_noise(fs, 2.5, 30.0, 120.0, level_db=0.0, seed=5)
+    noise = noise * (10.0 ** (-60.0 / 20.0) / np.sqrt(np.mean(noise * noise)))
+    tails = signals.kick(fs, n_hits=5, spacing=0.45, level_db=-6.0, t60=1.0)
+    return {"silence": source_band(hits, fs), "noise_60": source_band(hits + noise, fs), "tails": source_band(tails, fs)}
+
+
+def export_notes() -> dict[str, np.ndarray]:
+    """Task 7: note starts (detect, begin) and ends of activity.note_starts / note_ends on notes_inputs()."""
+    out = {}
+    for name, x_b in notes_inputs().items():
+        starts = activity.note_starts(x_b, 48000)
+        out[f"detect/{name}"] = starts.detect
+        out[f"begin/{name}"] = starts.begin
+        out[f"end/{name}"] = activity.note_ends(x_b, 48000).astype(np.float64)
+    return out
+
+
+EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes}
 
 
 def main(argv: list[str] | None = None) -> int:

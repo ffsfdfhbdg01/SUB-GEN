@@ -16,9 +16,15 @@ class PeakFollower
 public:
     void prepare(double fs, double attackMs, double releaseMs)
     {
+        setTimes(fs, attackMs, releaseMs);
+        y = 0.0;
+    }
+
+    // New times without touching the state (parameter changes while running).
+    void setTimes(double fs, double attackMs, double releaseMs)
+    {
         attack = 1.0 - std::exp(-1.0 / (attackMs * 1e-3 * fs));
         release = 1.0 - std::exp(-1.0 / (releaseMs * 1e-3 * fs));
-        y = 0.0;
     }
     void reset() { y = 0.0; }
     double current() const { return y; }
