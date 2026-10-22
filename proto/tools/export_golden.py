@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, envelope, signals, svf
+from subgen_proto import activity, divide, envelope, render, signals, svf
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -157,7 +157,44 @@ def export_notes() -> dict[str, np.ndarray]:
     return out
 
 
-EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes}
+DIVIDE_WINDOW = 4096
+
+
+def divide_cases(fs: float = 48000) -> dict[str, tuple[np.ndarray, str, int]]:
+    """Task 8: raw input (the C++ test runs it through its own SourceBand), quality and the first sample of the
+    compared window. tests/unit/test_divide.cpp builds the same inputs."""
+    sine = np.concatenate([np.zeros(int(0.02 * fs)), signals.sine(55.0, fs, 0.1, -12.0)])
+    return {
+        "sine_live": (sine, "live", 0),
+        "kick_mix": (signals.kick(fs, n_hits=1, spacing=0.5, level_db=-6.0), "mix", 0),
+        "two_hits_mix": (signals.kick(fs, n_hits=2, spacing=0.5, level_db=-6.0), "mix", 24000 - 1024),
+        "tails_mix": (signals.kick(fs, n_hits=2, spacing=0.45, level_db=-6.0, t60=1.0), "mix", 21600 - 1024),
+        "bass808_live": (signals.bass_808(fs), "live", 0),
+    }
+
+
+def export_divide() -> dict[str, np.ndarray]:
+    """Task 8: divide.divide (the delayed axis: y1, y2, f_est, conf, provisional) and render.divide_sub_causal (Sub -1,
+    shape 0, conf_gate 50 %: the engine output) on x_b = source_band(input), in windows of DIVIDE_WINDOW samples."""
+    fs = 48000
+    out = {}
+    for name, (x, quality, first) in divide_cases(fs).items():
+        x_b = source_band(x, fs)
+        look = render.LOOKAHEAD_S[quality]
+        res = divide.divide(x_b, fs, live=quality == "live", lookahead_s=look)
+        gated = render.divide_sub_causal(x_b, fs, quality=quality)
+        w = slice(first, first + DIVIDE_WINDOW)
+        out[f"y1/{name}"] = res.y1[w]
+        out[f"y2/{name}"] = res.y2[w]
+        out[f"f_est/{name}"] = res.f_est[w]
+        out[f"conf/{name}"] = res.conf[w]
+        out[f"provisional/{name}"] = res.provisional[w].astype(np.float64)
+        out[f"out/{name}"] = gated[w]
+    return out
+
+
+EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
+           "divide": export_divide}
 
 
 def main(argv: list[str] | None = None) -> int:

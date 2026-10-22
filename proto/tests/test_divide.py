@@ -276,6 +276,56 @@ class TestRobustness(unittest.TestCase):
         self.assertLess(abs(util.zc_freq(res.y1[int(0.3 * FS):], FS) - 27.5) / 27.5, 1e-3)
 
 
+
+class TestConfidenceAsKnown(unittest.TestCase):
+    """Phase 3 Task 8: the plug-in's Mix/Print gate reads the confidence as the plug-in knows it at the read time.
+    The offline divide() already knows a note's provisional confidence from its reset point, up to the detection
+    delay earlier; conf_as_known takes those windows from divide() on the input cut at the detection."""
+
+    def _windows(self, x_b, look):
+        starts = divide.activity.note_starts(x_b, FS)
+        mask = np.zeros(len(x_b), dtype=bool)
+        for t in starts.detect.tolist():
+            m = int(np.ceil(t))
+            mask[max(0, m - look):m] = True
+        return mask
+
+    def test_conf_as_known_equals_offline_outside_the_windows_before_detections(self):
+        x_b = _hits(n_hits=4, extra=lambda n: _floor(n, -70.0))
+        look = int(round(0.045 * FS))
+        res = divide.divide(x_b, FS, lookahead_s=0.045)
+        conf, prov = divide.conf_as_known(x_b, FS, live=False, lookahead_s=0.045)
+        outside = ~self._windows(x_b, look)
+        np.testing.assert_array_equal(conf[outside], res.conf[outside])
+        np.testing.assert_array_equal(prov[outside], res.provisional[outside])
+        self.assertTrue(np.any(prov != res.provisional))  # inside: the provisional value is not known yet
+        for t in divide.activity.note_starts(x_b, FS).detect.tolist():  # inside: the input cut at the detection
+            m = int(np.ceil(t))
+            pre = divide.divide(x_b[:m], FS, lookahead_s=0.045)
+            np.testing.assert_array_equal(conf[max(0, m - look):m], pre.conf[max(0, m - look):m])
+
+    def test_conf_as_known_equals_offline_in_live(self):
+        x_b = _hits(n_hits=3)
+        res = divide.divide(x_b, FS, live=True, lookahead_s=0.0)
+        conf, prov = divide.conf_as_known(x_b, FS, live=True, lookahead_s=0.0)
+        np.testing.assert_array_equal(conf, res.conf)
+        np.testing.assert_array_equal(prov, res.provisional)
+
+    def test_divide_sub_causal_keeps_the_kick_onset(self):
+        # T-DIV-08 with the causal gate: >= 50 % of the ungated sub energy in the first 40 ms
+        x_b = band.range_filter(signals.kick(FS, n_hits=1, spacing=0.5, level_db=-6.0), FS)
+        n40 = int(0.040 * FS)
+        for quality, look in (("mix", 0.045), ("print", 0.055)):
+            gated = render.divide_sub_causal(x_b, FS, quality=quality)
+            ungated = divide.smooth_sub(divide.divide(x_b, FS, lookahead_s=look), FS, 1)
+            self.assertGreaterEqual(np.sum(gated[:n40] ** 2) / np.sum(ungated[:n40] ** 2), 0.5, msg=quality)
+
+    def test_divide_sub_causal_equals_divide_sub_in_live(self):
+        x_b = _hits(n_hits=3)
+        np.testing.assert_array_equal(render.divide_sub_causal(x_b, FS, quality="live"),
+                                      render.divide_sub(x_b, FS, quality="live"))
+
+
 class TestShaping(unittest.TestCase):
     def test_smooth_sub_removes_three_halves_component(self):
         # y1 of a sine holds f/2 and 3f/2 (4.4 dB apart, by hand); the 0.87 f 4th-order tracking low-pass leaves it >18 dB down.

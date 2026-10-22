@@ -79,6 +79,20 @@ def divide_sub(x_b, fs: float, *, shape_pct: float = 0.0, conf_gate_pct: float =
     return divide.apply_confidence_gate(y, ahead(res.conf, 0.0), conf_gate_pct, fs, ahead(res.provisional, False))
 
 
+
+def divide_sub_causal(x_b, fs: float, *, shape_pct: float = 0.0, conf_gate_pct: float = 50.0,
+                      quality: str = "mix") -> np.ndarray:
+    """divide_sub with the gate reading the confidence as the plug-in knows it (divide.conf_as_known): the reference
+    for the C++ DIVIDE's gated output (Phase 3 Task 8). Equal to divide_sub in Live."""
+    look = LOOKAHEAD_S[quality]
+    live = quality == "live"
+    res = divide.divide(x_b, fs, live=live, lookahead_s=look)
+    y = divide.smooth_sub(res, fs, 1, shape_pct=shape_pct)
+    conf, prov = divide.conf_as_known(x_b, fs, live=live, lookahead_s=look)
+    k = min(int(round(look * fs)), len(conf))
+    ahead = (lambda a, fill: np.concatenate([a[k:], np.full(k, fill)])) if k else (lambda a, fill: a)
+    return divide.apply_confidence_gate(y, ahead(conf, 0.0), conf_gate_pct, fs, ahead(prov, False))
+
 def track_sub(x_b, fs: float, *, f_min: float = 30.0, lookahead_s: float = 0.045, shape_pct: float = 0.0,
               conf_gate_pct: float = 50.0) -> np.ndarray:
     """TRACK Sub -1: MPM pitch read `lookahead_s` ahead (log-interpolated; 0 = causal hold), free-running oscillator at

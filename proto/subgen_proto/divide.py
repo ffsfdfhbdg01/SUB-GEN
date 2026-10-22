@@ -227,6 +227,30 @@ def divide(x, fs: float, *, live: bool = False, conf_mode: str = "trend", lookah
                         np.array(resets, dtype=int), p_arr)
 
 
+
+def conf_as_known(x, fs: float, *, live: bool = False, lookahead_s: float = 0.045,
+                  thresh_db: float = -55.0) -> tuple[np.ndarray, np.ndarray]:
+    """Confidence and provisional flag as a causal implementation knows them at each sample (Phase 3 Task 8).
+    divide() resets a note's history at a crossing up to the lookahead before the note is detected, so offline its
+    provisional confidence starts up to the detection delay earlier than a plug-in can know it. For every note start
+    (latest first), the samples [m - E, m), m = ceil(detect), are taken from divide() on x[:m]. In Live the reset
+    happens at the detection, and both are equal."""
+    res = divide(x, fs, live=live, lookahead_s=lookahead_s, thresh_db=thresh_db)
+    conf, prov = res.conf.copy(), res.provisional.copy()
+    look = int(round(lookahead_s * fs))
+    if live or look == 0:
+        return conf, prov
+    x = np.asarray(x, dtype=np.float64)
+    for t_det in sorted(activity.note_starts(x, fs, thresh_db=thresh_db).detect.tolist(), reverse=True):
+        m = min(int(np.ceil(t_det)), len(x))
+        lo = max(0, m - look)
+        if m <= lo:
+            continue
+        pre = divide(x[:m], fs, live=live, lookahead_s=lookahead_s, thresh_db=thresh_db)
+        conf[lo:m] = pre.conf[lo:m]
+        prov[lo:m] = pre.provisional[lo:m]
+    return conf, prov
+
 SHAPE_OCTAVES = 5.0  # shape 100 % raises the smoothing cutoff by 2^5 = 32 times
 
 
