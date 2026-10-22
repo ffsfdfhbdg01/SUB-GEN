@@ -20,8 +20,17 @@ foreach(file IN LISTS unit_tests)
     endif()
 endforeach()
 
+# Test support (DFT of any length, measurements, test signals, golden data, allocation guard), compiled into each
+# test executable; the allocation guard replaces the global operator new there.
+add_library(subgen_test_support INTERFACE)
+file(GLOB support_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/support/*.cpp")
+target_sources(subgen_test_support INTERFACE ${support_sources})
+target_include_directories(subgen_test_support INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(subgen_test_support INTERFACE SUBGEN_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+
 add_executable(subgen_dsp_tests ${dsp_test_sources})
-target_link_libraries(subgen_dsp_tests PRIVATE subgen_dsp Catch2::Catch2WithMain juce::juce_recommended_config_flags)
+target_link_libraries(subgen_dsp_tests
+    PRIVATE subgen_dsp subgen_test_support Catch2::Catch2WithMain juce::juce_recommended_config_flags)
 subgen_strict_warnings(subgen_dsp_tests)
 catch_discover_tests(subgen_dsp_tests)
 
@@ -30,7 +39,7 @@ catch_discover_tests(subgen_dsp_tests)
 if(SUBGEN_BUILD_PLUGIN)
     add_executable(subgen_plugin_tests ${plugin_test_sources})
     target_include_directories(subgen_plugin_tests PRIVATE $<TARGET_PROPERTY:SubGen,INCLUDE_DIRECTORIES>)
-    target_link_libraries(subgen_plugin_tests PRIVATE SubGen Catch2::Catch2WithMain)
+    target_link_libraries(subgen_plugin_tests PRIVATE SubGen subgen_test_support Catch2::Catch2WithMain)
     subgen_strict_warnings(subgen_plugin_tests)
     catch_discover_tests(subgen_plugin_tests)
 endif()

@@ -106,6 +106,41 @@ def pink_noise(fs, dur, f_lo=20.0, f_hi=2000.0, level_db=-24.0, seed=1) -> np.nd
     return _normalize_peak(np.fft.irfft(spec * gain, n), level_db)
 
 
+_XORSHIFT_MUL = 2685821657736338717  # 0x2545F4914F6CDD1D
+_U64 = (1 << 64) - 1
+
+
+def xorshift_noise(n: int, seed: int = 1) -> np.ndarray:
+    """Uniform noise in [-1, 1) from xorshift64*, reproduced bit for bit by the C++ tests (tests/support/Signals):
+    x ^= x >> 12; x ^= x << 25; x ^= x >> 27; y = (x * 0x2545F4914F6CDD1D mod 2^64) >> 11; value = y / 2^53 * 2 - 1.
+    The state starts at `seed`, which must not be 0."""
+    if seed <= 0 or seed > _U64:
+        raise ValueError("seed must be in 1 .. 2^64 - 1")
+    x = seed
+    out = np.empty(n)
+    for i in range(n):
+        x ^= x >> 12
+        x ^= (x << 25) & _U64
+        x ^= x >> 27
+        out[i] = ((x * _XORSHIFT_MUL) & _U64) >> 11
+    return out / 2.0 ** 53 * 2.0 - 1.0
+
+
+def band_noise(fs, dur, f_lo=20.0, f_hi=2000.0, level_db=-24.0, seed=1) -> np.ndarray:
+    """pink_noise with xorshift_noise as the source: amplitude ~ 1/sqrt(f) inside [f_lo, f_hi], exactly zero outside
+    (n-point DFT, n = round(fs dur), bin k at k (fs / n)), peak-normalised to level_db. The C++ tests generate the same
+    signal (tests/support/Signals: bandNoise)."""
+    n = _n(fs, dur)
+    if n == 0:
+        return np.zeros(0)
+    spec = np.fft.rfft(xorshift_noise(n, seed))
+    f = np.arange(n // 2 + 1) * (fs / n)
+    gain = np.zeros(len(f))
+    band = (f >= f_lo) & (f <= f_hi)
+    gain[band] = 1.0 / np.sqrt(f[band])
+    return _normalize_peak(np.fft.irfft(spec * gain, n), level_db)
+
+
 def antiphase_pair(fs, f=60.0, dur=2.0, level_db=-12.0):
     left = sine(f, fs, dur, level_db)
     return left, -left

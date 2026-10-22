@@ -148,5 +148,32 @@ class TestPathological(unittest.TestCase):
         self.assertGreater(np.count_nonzero(np.isfinite(x)), 900)
 
 
+
+class TestXorshift(unittest.TestCase):
+    """xorshift64* noise and the band noise built on it: the C++ test generators reproduce both bit for bit."""
+
+    def test_xorshift_noise_known_values(self):
+        # seed 1, computed by hand from x ^= x >> 12; x ^= x << 25; x ^= x >> 27; y = (x * 0x2545F4914F6CDD1D) >> 11
+        self.assertEqual(signals.xorshift_noise(4, seed=1).tolist(),
+                         [-0.43832989989928106, 0.34227450605335275, 0.45169229056673355, -0.39294140006840195])
+
+    def test_xorshift_noise_range_mean_and_seed(self):
+        x = signals.xorshift_noise(100000, seed=3)
+        self.assertTrue(np.all((x >= -1.0) & (x < 1.0)))
+        self.assertLess(abs(np.mean(x)), 0.01)
+        self.assertFalse(np.array_equal(x[:100], signals.xorshift_noise(100, seed=4)))
+        with self.assertRaises(ValueError):
+            signals.xorshift_noise(10, seed=0)
+
+    def test_band_noise_band_limited_and_peak(self):
+        x = signals.band_noise(FS, 1.0, 30.0, 120.0, level_db=-12.0, seed=4)
+        self.assertEqual(len(x), FS)
+        self.assertLess(abs(np.max(np.abs(x)) - _pk(-12.0)), 1e-12)
+        inside = util.band_db(x, FS, 30.0, 120.0)
+        self.assertLess(util.band_db(x, FS, 240.0, FS / 2), inside - 100.0)  # exactly band-limited (n-point DFT)
+        self.assertLess(util.band_db(x, FS, 0.0, 15.0), inside - 100.0)
+        np.testing.assert_array_equal(x, signals.band_noise(FS, 1.0, 30.0, 120.0, level_db=-12.0, seed=4))
+
+
 if __name__ == "__main__":
     unittest.main()
