@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, envelope, render, signals, svf, track, trigger, util
+from subgen_proto import activity, divide, envelope, harmonic, render, signals, svf, track, trigger, util
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -245,8 +245,32 @@ def export_trigger() -> dict[str, np.ndarray]:
     return {f"out/{name}": trigger.render(source_band(x, fs), fs, **kw) for name, (x, kw) in trigger_cases(fs).items()}
 
 
+HARMONIC_WINDOW = 4096
+
+
+def harmonic_cases(fs: float = 48000) -> dict[str, tuple[np.ndarray, dict, int]]:
+    """Task 12: raw input (the C++ test runs it through its own SourceBand, 30-120 Hz), harmonic.harmonic options (the
+    engine's defaults: 50 %, balance 0, K = 4, range_lo 30 Hz) and the first sample of the compared window.
+    tests/unit/test_harmonic.cpp builds the same inputs."""
+    return {
+        "sine55": (signals.sine(55.0, fs, 0.3, -12.0), {}, 0),
+        "two_tone": (signals.two_tone(50.0, 70.0, fs, 0.3, -12.0), {}, 8192),
+        "bass808_k5": (signals.bass_808(fs), dict(amount_pct=80.0, balance=50.0, k_max=5), 0),
+    }
+
+
+def export_harmonic() -> dict[str, np.ndarray]:
+    """Task 12: harmonic.harmonic on x_b = source_band(input), in windows of HARMONIC_WINDOW samples."""
+    fs = 48000
+    out = {}
+    for name, (x, kw, first) in harmonic_cases(fs).items():
+        y = harmonic.harmonic(source_band(x, fs), fs, f_lo=30.0, **kw)
+        out[f"out/{name}"] = y[first:first + HARMONIC_WINDOW]
+    return out
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
-           "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger}
+           "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic}
 
 
 def main(argv: list[str] | None = None) -> int:
