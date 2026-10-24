@@ -153,9 +153,9 @@ class TestRobustness(unittest.TestCase):
         # in-band noise is ~4 % median, larger than white-noise intuition suggests).
         clean = divide.divide(_inband_noise_sine(60.0, FS, 4.0, 20.0, seed=5), FS)
         self.assertLess(abs(util.zc_freq(clean.y1[FS:], FS) - 30.0) / 30.0, 0.02)
-        self.assertGreater(np.mean(divide.gate_mask(clean.conf, 50.0)[FS:]), 0.9)
+        self.assertGreater(np.mean(divide.divide_gate_mask(clean, 50.0)[FS:]), 0.9)
         noisy = divide.divide(_inband_noise_sine(60.0, FS, 4.0, 3.0, seed=6), FS)
-        self.assertLess(np.mean(divide.gate_mask(noisy.conf, 50.0)[FS:]), 0.2)
+        self.assertLess(np.mean(divide.divide_gate_mask(noisy, 50.0)[FS:]), 0.2)
 
     def test_gate_mask_hysteresis(self):
         # Opens at conf >= 0.5 (conf_gate 50), closes only below 0.3: no flicker while conf hovers around the threshold.
@@ -181,6 +181,34 @@ class TestRobustness(unittest.TestCase):
                          [True, True, False, False, True, True, False])
         self.assertEqual(divide.gate_mask([1.0, 0.6, 0.35], 50.0, provisional=[True, False, False]).tolist(),
                          [True, True, True])
+
+    def test_confirmations_count_consecutive_values_on_the_dividers_time_line(self):
+        # F-1: each change of (conf, provisional) is a new value; repeats count once; provisional counts; < hi resets
+        conf = [0.0, 1.0, 1.0, 0.6, 0.6, 0.7, 0.4, 0.55, 0.6, 0.6]
+        prov = [False, True, True, False, False, False, False, False, False, False]
+        self.assertEqual(divide.confirmations(conf, prov, 50.0).tolist(), [0, 1, 1, 2, 2, 3, 0, 1, 2, 2])
+
+    def test_gate_needs_two_confirmations_to_open(self):
+        conf = np.array([0.0, 0.6, 0.6, 0.65, 0.4, 0.6, 0.29, 0.7, 0.75])
+        count = divide.confirmations(conf, None, 50.0)
+        self.assertEqual(count.tolist(), [0, 1, 1, 2, 0, 1, 0, 1, 2])
+        self.assertEqual(divide.gate_mask(conf, 50.0, None, 2, count).tolist(),
+                         [False, False, False, True, True, True, False, False, True])
+        # a provisional opening is confirmed by the first real value alone, as before
+        prov = [True, True, False, False]
+        conf2 = [1.0, 1.0, 0.6, 0.29]
+        self.assertEqual(divide.gate_mask(conf2, 50.0, prov, 2, divide.confirmations(conf2, prov, 50.0)).tolist(),
+                         [True, True, True, False])
+
+    def test_chord_through_the_default_band_is_gated(self):
+        # F-1: through the source band the chord's periods now and then fit a trend; one value >= 0.5 used to open the
+        # gate (-10.3 dB); two consecutive ones do not happen for it
+        chord = signals.chord(FS, (55.0, 69.0, 82.0), 2.0, -12.0)
+        x_b = band.range_filter(chord, FS)
+        k = int(0.1 * FS)
+        for quality in ("live", "mix"):
+            gated = render.divide_sub(x_b, FS, quality=quality)
+            self.assertLessEqual(20 * np.log10(util.rms(gated[k:]) / util.rms(chord[k:]) + 1e-12), -40.0, msg=quality)
 
     def test_gate_stays_open_through_kick_pitch_drop(self):
         # SIG-03 kick: the period grows 19.7, 20.2, 19.1, 16.1, 11.7 % per cycle (hand-measured on the crossings), but
@@ -227,7 +255,7 @@ class TestRobustness(unittest.TestCase):
         x = signals.chord(FS, (55.0, 69.0, 82.0), 3.0, -12.0)
         res = divide.divide(x, FS)
         k = int(0.1 * FS)
-        self.assertEqual(np.mean(divide.gate_mask(res.conf, 50.0)[k:]), 0.0)
+        self.assertEqual(np.mean(divide.divide_gate_mask(res, 50.0)[k:]), 0.0)
         for quality in ("live", "mix"):
             gated = render.divide_sub(x, FS, quality=quality)
             self.assertLessEqual(20 * np.log10(util.rms(gated[k:]) / util.rms(x[k:]) + 1e-12), -40.0, msg=quality)
@@ -240,8 +268,9 @@ class TestRobustness(unittest.TestCase):
         for seed in (4, 5, 6, 7, 8):
             x = signals.pink_noise(FS, 3.0, 30.0, 120.0, level_db=-12.0, seed=seed)
             res = divide.divide(x, FS)
-            self.assertLessEqual(np.mean(divide.gate_mask(res.conf, 50.0)[k:]), 0.03, msg=f"seed {seed}")
-            gated = divide.apply_confidence_gate(res.y1, res.conf, 50.0, FS)
+            self.assertLessEqual(np.mean(divide.divide_gate_mask(res, 50.0)[k:]), 0.03, msg=f"seed {seed}")
+            gated = divide.apply_confidence_gate(res.y1, res.conf, 50.0, FS, res.provisional, divide.GATE_CONFIRM,
+                                                 divide.confirmations(res.conf, res.provisional, 50.0))
             self.assertLessEqual(20 * np.log10(util.rms(gated[k:]) / util.rms(x[k:]) + 1e-12), -12.0,
                                  msg=f"seed {seed}")
 
@@ -294,7 +323,7 @@ class TestConfidenceAsKnown(unittest.TestCase):
         x_b = _hits(n_hits=4, extra=lambda n: _floor(n, -70.0))
         look = int(round(0.045 * FS))
         res = divide.divide(x_b, FS, lookahead_s=0.045)
-        conf, prov = divide.conf_as_known(x_b, FS, live=False, lookahead_s=0.045)
+        conf, prov, _ = divide.conf_as_known(x_b, FS, live=False, lookahead_s=0.045)
         outside = ~self._windows(x_b, look)
         np.testing.assert_array_equal(conf[outside], res.conf[outside])
         np.testing.assert_array_equal(prov[outside], res.provisional[outside])
@@ -307,7 +336,7 @@ class TestConfidenceAsKnown(unittest.TestCase):
     def test_conf_as_known_equals_offline_in_live(self):
         x_b = _hits(n_hits=3)
         res = divide.divide(x_b, FS, live=True, lookahead_s=0.0)
-        conf, prov = divide.conf_as_known(x_b, FS, live=True, lookahead_s=0.0)
+        conf, prov, _ = divide.conf_as_known(x_b, FS, live=True, lookahead_s=0.0)
         np.testing.assert_array_equal(conf, res.conf)
         np.testing.assert_array_equal(prov, res.provisional)
 

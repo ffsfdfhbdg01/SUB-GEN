@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, envelope, render, signals, svf
+from subgen_proto import activity, divide, envelope, render, signals, svf, util
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -160,16 +160,27 @@ def export_notes() -> dict[str, np.ndarray]:
 DIVIDE_WINDOW = 4096
 
 
+def noisy_sine(f: float, fs: float, dur: float, snr_db: float, seed: int) -> np.ndarray:
+    """A -12 dBFS sine plus band noise (30-120 Hz) snr_db below it (tests/unit/test_divide.cpp: noiseSine)."""
+    s = signals.sine(f, fs, dur, -12.0)
+    nz = signals.band_noise(fs, dur, 30.0, 120.0, 0.0, seed)
+    return s + nz * ((util.rms(s) / 10 ** (snr_db / 20.0)) / util.rms(nz))
+
+
 def divide_cases(fs: float = 48000) -> dict[str, tuple[np.ndarray, str, int]]:
     """Task 8: raw input (the C++ test runs it through its own SourceBand), quality and the first sample of the
     compared window. tests/unit/test_divide.cpp builds the same inputs."""
     sine = np.concatenate([np.zeros(int(0.02 * fs)), signals.sine(55.0, fs, 0.1, -12.0)])
+    noisy = noisy_sine(55.0, fs, 1.5, 15.0, 5)
     return {
         "sine_live": (sine, "live", 0),
         "kick_mix": (signals.kick(fs, n_hits=1, spacing=0.5, level_db=-6.0), "mix", 0),
         "two_hits_mix": (signals.kick(fs, n_hits=2, spacing=0.5, level_db=-6.0), "mix", 24000 - 1024),
         "tails_mix": (signals.kick(fs, n_hits=2, spacing=0.45, level_db=-6.0, t60=1.0), "mix", 21600 - 1024),
         "bass808_live": (signals.bass_808(fs), "live", 0),
+        # F-1: each window holds a gate opening on the second confirmation and samples that one would have opened
+        "noisy_sine_mix": (noisy, "mix", 46336),
+        "noisy_sine_live": (noisy, "live", 48384),
     }
 
 

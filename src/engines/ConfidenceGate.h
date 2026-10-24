@@ -9,7 +9,8 @@ namespace subgen::engines
 // Confidence gate (SPEC §6.1; prototype divide.gate_states and apply_confidence_gate): opens at c >= hi =
 // 0.2 + 0.6 conf_gate and closes below max(hi - 0.2, hi / 2). A provisional confidence holds it open; when that ends,
 // the first real value must reach hi, otherwise the gate closes with a 10 ms release. The gain follows with a 5 ms
-// attack and a 50 ms release. No allocation.
+// attack and a 50 ms release. With setConfirmations(n >= 2) (DIVIDE, F-1) any other opening also needs the count of
+// consecutive confidence values >= hi on the engine's own time line (divide.confirmations) to reach n. No allocation.
 class ConfidenceGate
 {
 public:
@@ -28,6 +29,8 @@ public:
         lo = std::max(hi - 0.2, 0.5 * hi);
     }
 
+    void setConfirmations(int n) { confirmations = std::max(1, n); }
+
     void reset()
     {
         state = false;
@@ -36,7 +39,7 @@ public:
         gain = 0.0;
     }
 
-    double process(double c, bool provisional)
+    double process(double c, bool provisional, int confirmationCount = 0)
     {
         if (provisional)
         {
@@ -50,7 +53,7 @@ public:
             wasProvisional = false;
             fast = !state;
         }
-        else if (!state && c >= hi)
+        else if (!state && c >= hi && (confirmations <= 1 || confirmationCount >= confirmations))
         {
             state = true;
             fast = false;
@@ -71,6 +74,7 @@ private:
     double rejectRelease = 1.0;
     double hi = 0.5;
     double lo = 0.3;
+    int confirmations = 1;
     bool state = false;
     bool wasProvisional = false;
     bool fast = false;

@@ -96,11 +96,23 @@ struct Core
     int resets = 0;
     bool resetNow = false; // a reset happened at the last processed sample
 
+    // F-1: consecutive confidence values >= gateHi on this core's time line (divide.confirmations): every change of
+    // (conf, provisional) is a value; a provisional one counts; a value below gateHi resets the count
+    double gateHi = 0.5;
+    int confirmations = 0;
+    bool hasOutput = false;
+    double outConf = 0.0;
+    bool outProvisional = false;
+
     void configure(double sampleRate);
     void clearState();
 
     // Processes sample `next`; writes its sign operations in order into ops and returns their count.
     int step(double x, double theta, const SampleEvents& ev, std::array<SignOp, 4>& ops);
+
+    // Skips to sample `target` over samples without a zero crossing or an event: only the arming counts, the previous
+    // input and the expiry of the held value change there (the replay of core B).
+    void jump(std::int64_t target, double xBefore, std::int64_t negThrough, std::int64_t posThrough);
 
     std::int64_t last() const { return next - 1; }
     double fEst() const { return held() ? heldF : 0.0; }
@@ -109,6 +121,7 @@ struct Core
 
 private:
     bool held() const { return heldIndex <= last() && last() < heldEnd; }
+    void countConfirmation();
     void store(std::int64_t index, double f, double c, double period, bool prov);
     void clear(std::int64_t k, SignOp kind, double confAfter, std::int64_t negBefore, std::int64_t posBefore,
                std::array<SignOp, 4>& ops, int& count);
@@ -123,8 +136,9 @@ private:
 //  - core A runs on the axis delayed by E and is the prototype's state machine; a start is applied at its reset
 //    point, which is never behind A's position when the start becomes known, so A's y1, y2, f_est, conf equal
 //    divide.divide();
-//  - core B runs on the current input and gives the confidence as known now, which the gate reads (E ahead of A):
-//    at every note start B is re-derived as a copy of A advanced over the last E samples (render.divide_sub_causal);
+//  - core B runs on the current input and gives the confidence and its confirmation count (F-1, ADR-030) as known
+//    now, which the gate reads (E ahead of A): at every note start B is re-derived as a copy of A advanced over the
+//    last E samples, with a full step only at their zero crossings and events (render.divide_sub_causal);
 //  - the flip-flop signs, the tracking low-pass (shape as a cutoff shift, 5 ms log slew), Constant and the sub levels
 //    work on the delayed axis. In Live (E = 0) A and B are the same core.
 // prepare() allocates; process() does not.
@@ -143,6 +157,8 @@ public:
     bool gateOpen() const { return gate.open(); }
     int resetCount() const { return coreA.resets; }
     const DivideProbe& probe() const { return lastProbe; }
+    int replayCount() const { return replays; }           // re-derivations of core B (note starts in Mix and Print)
+    int maxReplaySteps() const { return replayStepsMax; } // the most full core steps one re-derivation took
 
 private:
     struct QueuedEvent
@@ -183,6 +199,7 @@ private:
     double smooth(Smoother& s, double y, double cutoff);
     double ringX(std::int64_t i) const { return ringXb[static_cast<size_t>(i) % ringXb.size()]; }
     double ringT(std::int64_t i) const { return ringTheta[static_cast<size_t>(i) % ringTheta.size()]; }
+    void rederiveCoreB(std::int64_t cur);
 
     double fs = 48000.0;
     int look = 0;
@@ -200,6 +217,13 @@ private:
 
     std::vector<double> ringXb;
     std::vector<double> ringTheta;
+    std::vector<std::int64_t> ringNeg; // arming counts through each sample, as the cores count them
+    std::vector<std::int64_t> ringPos;
+    std::vector<std::int64_t> crossings; // recent zero-crossing samples (a ring), for the sparse replay of core B
+    size_t crossingHead = 0;
+    size_t crossingCount = 0;
+    std::int64_t cumNeg = 0;
+    std::int64_t cumPos = 0;
     std::array<QueuedEvent, 16> queue{};
     int queueCount = 0;
 
@@ -214,5 +238,7 @@ private:
     double lastFEst = 0.0;
     double lastConfKnown = 0.0;
     DivideProbe lastProbe;
+    int replays = 0;
+    int replayStepsMax = 0;
 };
 } // namespace subgen::engines

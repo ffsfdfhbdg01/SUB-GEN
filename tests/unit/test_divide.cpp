@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -143,11 +144,12 @@ std::span<const double> slice(const std::vector<double>& v, size_t from, size_t 
     return {v.data() + from, std::min(count, v.size() - from)};
 }
 
-// The divider's raw input for the prototype comparisons: the engine applies its own source band to the input.
-std::vector<double> noiseSine(double f, double snrDb, std::uint64_t seed)
+// The divider's raw input for the prototype comparisons (export_golden.noisy_sine): the engine applies its own source
+// band to the input.
+std::vector<double> noiseSine(double f, double snrDb, std::uint64_t seed, double dur = 4.0)
 {
-    auto s = sig::sine(f, kFs, 4.0, -12.0);
-    auto nz = sig::bandNoise(kFs, 4.0, 30.0, 120.0, 0.0, seed);
+    auto s = sig::sine(f, kFs, dur, -12.0);
+    auto nz = sig::bandNoise(kFs, dur, 30.0, 120.0, 0.0, seed);
     const double scale = (test::rms(s) / std::pow(10.0, snrDb / 20.0)) / test::rms(nz);
     for (size_t i = 0; i < s.size(); ++i)
         s[i] += nz[i] * scale;
@@ -175,6 +177,9 @@ TEST_CASE("golden: DIVIDE equals divide.divide and render.divide_sub_causal with
         {"tails_mix", sig::kick(kFs, {.nHits = 2, .spacing = 0.45, .levelDb = -6.0, .t60 = 1.0}), Quality::Mix,
          21600 - 1024},
         {"bass808_live", sig::bass808(kFs), Quality::Live, 0},
+        // F-1: each window holds a gate opening on the second confirmation and samples that one would have opened
+        {"noisy_sine_mix", noiseSine(55.0, 15.0, 5, 1.5), Quality::Mix, 46336},
+        {"noisy_sine_live", noiseSine(55.0, 15.0, 5, 1.5), Quality::Live, 48384},
     };
     for (const auto& c : cases)
     {
@@ -199,6 +204,102 @@ TEST_CASE("golden: DIVIDE equals divide.divide and render.divide_sub_causal with
         CHECK(worstConf <= 1e-9);
         CHECK(provMismatch == 0);
         CHECK(worstOut <= 1e-9);
+    }
+}
+
+TEST_CASE("core B's sparse replay: a jump over samples without a crossing or an event equals stepping them", "[divide]")
+{
+    // a tone with a gap of digital silence long enough for the held value to expire inside a jump (the confirmation
+    // count resets there; the tone resumes with a negative half wave, so the first full step after the gap stores a
+    // new value and counts from 0), a note end, then a second note
+    const size_t total = 38400;
+    std::vector<double> x(total, 0.0);
+    for (size_t i = 0; i < total; ++i)
+    {
+        const double t = static_cast<double>(i) / kFs;
+        if (i < 14400)
+            x[i] = 0.25 * std::sin(2.0 * std::numbers::pi * 55.0 * t);
+        else if (i >= 19200 && i < 28800)
+            x[i] = -0.25 * std::sin(2.0 * std::numbers::pi * 55.0 * t);
+        else if (i >= 28800)
+            x[i] = 0.25 * std::sin(2.0 * std::numbers::pi * 70.0 * t);
+    }
+    const double theta = 0.01;
+    std::vector<std::int64_t> neg(total), pos(total); // the arming counts through each sample, as Divide rings them
+    std::int64_t cn = 0, cp = 0;
+    for (size_t i = 0; i < total; ++i)
+    {
+        cn += x[i] < -theta ? 1 : 0;
+        cp += x[i] > theta ? 1 : 0;
+        neg[i] = cn;
+        pos[i] = cp;
+    }
+    auto eventsAt = [](size_t i) {
+        divide_detail::SampleEvents ev;
+        ev.startAfter = i == 100 || i == 28850;
+        ev.startTime = static_cast<double>(i);
+        ev.end = i == 26000;
+        return ev;
+    };
+    divide_detail::Core full, sparse;
+    full.configure(kFs);
+    sparse.configure(kFs);
+    std::array<divide_detail::SignOp, 4> ops{};
+    int compared = 0;
+    int resetsInJumps = 0;
+    auto same = [&] {
+        CHECK(sparse.next == full.next);
+        CHECK(sparse.conf() == full.conf());
+        CHECK(sparse.fEst() == full.fEst());
+        CHECK(sparse.isProvisional() == full.isProvisional());
+        CHECK(sparse.confirmations == full.confirmations);
+        CHECK(sparse.s1 == full.s1);
+        CHECK(sparse.csNeg == full.csNeg);
+        CHECK(sparse.csPos == full.csPos);
+        CHECK(sparse.prevX == full.prevX);
+        CHECK(sparse.resets == full.resets);
+        CHECK(sparse.running == full.running);
+        ++compared;
+    };
+    for (size_t i = 0; i < total; ++i)
+    {
+        const auto ev = eventsAt(i);
+        full.step(x[i], theta, ev, ops);
+        const bool crossing = i >= 1 && ((x[i - 1] < 0.0 && x[i] >= 0.0) || (x[i - 1] > 0.0 && x[i] <= 0.0));
+        if (!crossing && !ev.startAfter && !ev.end)
+            continue;
+        if (static_cast<std::int64_t>(i) > sparse.next)
+        {
+            const int before = sparse.confirmations;
+            sparse.jump(static_cast<std::int64_t>(i), x[i - 1], neg[i - 1], pos[i - 1]);
+            resetsInJumps += before > 0 && sparse.confirmations == 0;
+        }
+        sparse.step(x[i], theta, ev, ops);
+        same();
+    }
+    sparse.jump(static_cast<std::int64_t>(total), x[total - 1], neg[total - 1], pos[total - 1]);
+    same();
+    CHECK(compared > 50);
+    CHECK(resetsInJumps >= 1);
+}
+
+TEST_CASE("a note start re-derives core B over the crossings and events of the lookahead only", "[divide]")
+{
+    // the security review's replay spike: core B used to step all E samples (2160 in Mix) at every note start
+    for (const auto& x : {kickHits(4, 0.5, 0.3), noiseSine(55.0, 15.0, 5, 1.5)})
+    {
+        Divide divide;
+        divide.prepare(kFs, 1, engineLookaheadSamples(Quality::Mix, kFs));
+        divide.setControl({});
+        const std::vector<double> silence(1, 0.0);
+        for (const double v : x)
+        {
+            double out = 0.0;
+            divide.process(std::span<const double>(&v, 1), silence, std::span<double>(&out, 1));
+        }
+        CHECK(divide.replayCount() >= 1);
+        CHECK(divide.maxReplaySteps() >= 1);
+        CHECK(divide.maxReplaySteps() <= 64);
     }
 }
 
@@ -401,14 +502,29 @@ TEST_CASE("T-DIV-05 chord (P2 conditions: band 15-500 Hz) and in-band noise are 
     }
 }
 
-// Known issue (Phase 3 finding F-1, ledger Task 8): through the default source band (30-120 Hz) the chord's crossing
-// periods now and then fit a linear trend for a few periods, the confidence passes 0.5 and the hysteresis keeps the
-// gate open about 12 % of the time: -10.3 dB, the prototype gives the same. Phase 2 measured the raw chord. The fix
-// changes SPEC §6.2 and waits for the user's decision; this test fails as long as the issue is there.
-TEST_CASE("T-DIV-05 chord through the default source band is gated (known issue F-1)", "[divide][!shouldfail]")
+// F-1 (accepted 2026-10-24): through the default source band the chord's crossing periods now and then fit a linear
+// trend; with one confirmation the gate opened 12 % of the time (-10.3 dB). Two consecutive values are needed now.
+TEST_CASE("T-DIV-05 chord through the default source band is gated (F-1)", "[divide]")
 {
     for (const auto quality : {Quality::Live, Quality::Mix})
-        CHECK(chordLevelDb(quality, 30.0, 120.0) <= -40.0);
+    {
+        const double level = chordLevelDb(quality, 30.0, 120.0);
+        INFO((quality == Quality::Mix ? "Mix " : "Live ") << level << " dB");
+        CHECK(level <= -40.0);
+    }
+}
+
+TEST_CASE("DIVIDE clamps out-of-range controls instead of failing", "[divide]")
+{
+    EngineControl bad;
+    bad.rangeLoHz = 0.0;
+    bad.rangeHiHz = std::numeric_limits<double>::quiet_NaN();
+    bad.confGate = 7.0;
+    bad.shape = -3.0;
+    bad.follow = false;
+    bad.detThreshDb = std::numeric_limits<double>::infinity();
+    const auto r = runDivide(sig::sine(55.0, kFs, 1.0, -12.0), Quality::Mix, bad);
+    CHECK(std::all_of(r.out.begin(), r.out.end(), [](double v) { return std::isfinite(v); }));
 }
 
 TEST_CASE("T-DIV-06 switches are continuous; shape 100: energy above 2 kHz <= -60 dB re peak", "[divide]")

@@ -1,6 +1,6 @@
 # SUB-GEN — TEST PLAN (Faza 1)
 
-Wersja dokumentu: 0.3 (korekty z Fazy 2: PHASE2_REPORT §6; po przeglądzie D8: §11) · Data: 2026-10-21 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [SPEC_BUILD_RELEASE.md](SPEC_BUILD_RELEASE.md), [PARAMETERS.md](PARAMETERS.md)
+Wersja dokumentu: 0.4 (korekty z Fazy 2: PHASE2_REPORT §6; po przeglądzie D8: §11; F-1 z Fazy 3: §12, ADR-030) · Data: 2026-10-24 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [SPEC_BUILD_RELEASE.md](SPEC_BUILD_RELEASE.md), [PARAMETERS.md](PARAMETERS.md)
 Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynikiem, wersją i datą.
 
 ## 1. Zasady
@@ -52,8 +52,8 @@ Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynik
 | T-DIV-01 | SPEC §6.2 | SIG-01 przez Divide (Add, wet only): częstotliwość Sub −1 i Sub −2 (FFT z interpolacją, po 5 cyklach) | f/2 i f/4 z błędem ≤ 0,1% | U · CI |
 | T-DIV-02 | SPEC §6.2 | czystość: shape = 0, składowa 3f/2 względem Sub −1 | ≤ −18 dB (P2: −23,4 dB) | U · CI |
 | T-DIV-03 | SPEC §6.2 | reguła polaryzacji na wyjściu domyślnym (shape 0, bramka), Mix i Live: SIG-03 (20 uderzeń) w ciszy, z szumem 30–120 Hz −90…−60 dBFS RMS i z buczeniem 31 Hz −70 dBFS; oraz nakładające się ogony (T60 1 s co 0,45 i 0,5 s) | oddzielone uderzenia: zgodność znaku pierwszego płatu 20/20, korelacja przebiegów ≥ 0,99; ogony: natywny sub 20/20, wyjście spójne między uderzeniami (P2: 20/20, 0,9995) | U · CI |
-| T-DIV-04 | SPEC §6.2 | SIG-19: dodatkowe przełączenia i błąd okresu | błąd okresu < 2 % dla SNR ≥ 10 dB; przy SNR 3 dB bramka otwarta ≤ 10 % czasu (P2: 4 %) | U · CI |
-| T-DIV-05 | SPEC §6.1 | SIG-06 (akord, od ciszy, Live i Mix) i losowy szum 30–120 Hz (SIG-07 po filtrze zakresu): bramka pewności; także `conf_gate` 0 % i 100 % (szum po nucie) | akord: poziom suba ≤ źródło − 40 dB po 100 ms (`conf_gate` = 50; P2: −76 dB Live, −116 dB Mix); szum: bramka otwarta ≤ 3 % czasu, poziom suba ≥ 12 dB poniżej szumu (P2: 0–2 %, ≥ 15 dB); przy 0 % i 100 % bramka zamyka się w szumie | U · CI |
+| T-DIV-04 | SPEC §6.2 | SIG-19: dodatkowe przełączenia i błąd okresu | błąd okresu < 2 % dla SNR ≥ 10 dB; przy SNR 3 dB bramka otwarta ≤ 10 % czasu (P2: 2 %; przed F-1: 4 %) | U · CI |
+| T-DIV-05 | SPEC §6.1 | SIG-06 (akord, od ciszy, Live i Mix) surowy i po domyślnym paśmie źródłowym 30–120 Hz (F-1, ADR-030) oraz losowy szum 30–120 Hz (SIG-07 po filtrze zakresu): bramka pewności; także `conf_gate` 0 % i 100 % (szum po nucie) | akord: poziom suba ≤ źródło − 40 dB po 100 ms (`conf_gate` = 50; P2: surowy −76 dB Live, −116 dB Mix; po paśmie 30–120 Hz −51 dB Live, −90 dB Mix, przed F-1 −10 dB); szum: bramka otwarta ≤ 3 % czasu, poziom suba ≥ 12 dB poniżej szumu (P2: 0 %; przed F-1: 0–2 %, ≥ 15 dB); przy 0 % i 100 % bramka zamyka się w szumie | U · CI |
 | T-DIV-06 | SPEC §6.2 | ciągłość przy przełączeniach (shape = 100): skok międzypróbkowy i widmo HF | skok ≤ 1 próbka kroku sygnału; energia > 2 kHz ≤ −60 dB względem szczytu | U · CI |
 | T-DIV-08 | SPEC §6.1, §6.2 | początek nuty przez bramkę: SIG-03 przez filtr zakresu, Live, Mix, Print | energia suba w pierwszych 40 ms ≥ 50 % energii bez bramki (P2: 94 / 95,5 / 95,5 %; wersja 0.2: 0,5 %) | U · CI |
 | T-DIV-09 | SPEC §6.2 | `shape` 0…100 % na sinusie 55 Hz | poziom składowej f/2 stały ± 0,5 dB (P2: 0,05 dB); shape 100 %: stosunek 3f/2 do f/2 w ± 1 dB od natywnego | U · CI |

@@ -76,7 +76,9 @@ def divide_sub(x_b, fs: float, *, shape_pct: float = 0.0, conf_gate_pct: float =
     y = divide.smooth_sub(res, fs, 1, shape_pct=shape_pct)
     k = min(int(round(look * fs)), len(res.conf))
     ahead = (lambda a, fill: np.concatenate([a[k:], np.full(k, fill)])) if k else (lambda a, fill: a)
-    return divide.apply_confidence_gate(y, ahead(res.conf, 0.0), conf_gate_pct, fs, ahead(res.provisional, False))
+    count = divide.confirmations(res.conf, res.provisional, conf_gate_pct)
+    return divide.apply_confidence_gate(y, ahead(res.conf, 0.0), conf_gate_pct, fs, ahead(res.provisional, False),
+                                        divide.GATE_CONFIRM, ahead(count, 0))
 
 
 
@@ -88,10 +90,11 @@ def divide_sub_causal(x_b, fs: float, *, shape_pct: float = 0.0, conf_gate_pct: 
     live = quality == "live"
     res = divide.divide(x_b, fs, live=live, lookahead_s=look)
     y = divide.smooth_sub(res, fs, 1, shape_pct=shape_pct)
-    conf, prov = divide.conf_as_known(x_b, fs, live=live, lookahead_s=look)
+    conf, prov, count = divide.conf_as_known(x_b, fs, live=live, lookahead_s=look, conf_gate_pct=conf_gate_pct)
     k = min(int(round(look * fs)), len(conf))
     ahead = (lambda a, fill: np.concatenate([a[k:], np.full(k, fill)])) if k else (lambda a, fill: a)
-    return divide.apply_confidence_gate(y, ahead(conf, 0.0), conf_gate_pct, fs, ahead(prov, False))
+    return divide.apply_confidence_gate(y, ahead(conf, 0.0), conf_gate_pct, fs, ahead(prov, False),
+                                        divide.GATE_CONFIRM, ahead(count, 0))
 
 def track_sub(x_b, fs: float, *, f_min: float = 30.0, lookahead_s: float = 0.045, shape_pct: float = 0.0,
               conf_gate_pct: float = 50.0) -> np.ndarray:

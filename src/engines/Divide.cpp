@@ -56,9 +56,35 @@ void Core::clearState()
 {
     const double keepFs = fs;
     const double keepGap = minGap;
+    const double keepHi = gateHi;
     *this = Core{};
     fs = keepFs;
     minGap = keepGap;
+    gateHi = keepHi;
+}
+
+void Core::countConfirmation()
+{
+    const double c = conf();
+    const bool p = isProvisional();
+    if (hasOutput && c == outConf && p == outProvisional)
+        return;
+    confirmations = (p || c >= gateHi) ? confirmations + 1 : 0;
+    hasOutput = true;
+    outConf = c;
+    outProvisional = p;
+}
+
+void Core::jump(std::int64_t target, double xBefore, std::int64_t negThrough, std::int64_t posThrough)
+{
+    if (target <= next)
+        return;
+    next = target; // the held value may have expired on the way: its value at target - 1 is what changed
+    countConfirmation();
+    prevX = xBefore;
+    csNeg = negThrough;
+    csPos = posThrough;
+    resetNow = false;
 }
 
 void Core::store(std::int64_t index, double f, double c, double period, bool prov)
@@ -198,6 +224,7 @@ int Core::step(double x, double theta, const SampleEvents& ev, std::array<SignOp
         start(i, ev.ramp, ev.startTime, negBefore, posBefore, ops, count);
     prevX = x;
     ++next;
+    countConfirmation();
     return count;
 }
 } // namespace divide_detail
@@ -218,6 +245,10 @@ void Divide::prepare(double sampleRate, int, int lookahead)
     constantPeak.prepare(static_cast<int>(std::ceil(1.25 * fs / 15.0)) + 1);
     ringXb.assign(static_cast<size_t>(look) + 4, 0.0);
     ringTheta.assign(static_cast<size_t>(look) + 4, 0.0);
+    ringNeg.assign(static_cast<size_t>(look) + 4, 0);
+    ringPos.assign(static_cast<size_t>(look) + 4, 0);
+    crossings.assign(static_cast<size_t>(look) + 4, 0);
+    gate.setConfirmations(2); // F-1
     coreA.configure(fs);
     setControl(control);
     reset();
@@ -232,6 +263,12 @@ void Divide::reset()
     constantPeak.reset();
     std::fill(ringXb.begin(), ringXb.end(), 0.0);
     std::fill(ringTheta.begin(), ringTheta.end(), 0.0);
+    std::fill(ringNeg.begin(), ringNeg.end(), 0);
+    std::fill(ringPos.begin(), ringPos.end(), 0);
+    crossingHead = 0;
+    crossingCount = 0;
+    cumNeg = 0;
+    cumPos = 0;
     queueCount = 0;
     coreA.clearState();
     coreB = coreA;
@@ -244,11 +281,15 @@ void Divide::reset()
     lastFEst = 0.0;
     lastConfKnown = 0.0;
     lastProbe = DivideProbe{};
+    replays = 0;
+    replayStepsMax = 0;
 }
 
-void Divide::setControl(const EngineControl& c)
+void Divide::setControl(const EngineControl& requested)
 {
+    const EngineControl c = clampControl(requested);
     control = c;
+    coreA.gateHi = coreB.gateHi = 0.2 + 0.6 * c.confGate;
     if (c.baseFixed)
         band.setBandpass(2.0 * c.baseFreqHz); // Sub -1 at base_freq: the source an octave higher
     else
@@ -338,13 +379,69 @@ bool Divide::advanceCurrentAxis(std::int64_t cur, double xb)
     activity.process(xb);
     const NoteEvent ev = notes.process(xb, activity.active());
     const double theta = std::max((look == 0 ? 0.03 : 0.05) * activity.ePeak(), kArmingFloor);
-    ringXb[static_cast<size_t>(cur) % ringXb.size()] = xb;
-    ringTheta[static_cast<size_t>(cur) % ringTheta.size()] = theta;
+    const double before = cur > 0 ? ringX(cur - 1) : 0.0;
+    const size_t slot = static_cast<size_t>(cur) % ringXb.size();
+    ringXb[slot] = xb;
+    ringTheta[slot] = theta;
+    cumNeg += xb < -theta ? 1 : 0;
+    cumPos += xb > theta ? 1 : 0;
+    ringNeg[slot] = cumNeg;
+    ringPos[slot] = cumPos;
+    if (cur > 0 && ((before < 0.0 && xb >= 0.0) || (before > 0.0 && xb <= 0.0)))
+    {
+        if (crossingCount == crossings.size()) // keep the newest: the replay needs the last E samples only
+        {
+            crossingHead = (crossingHead + 1) % crossings.size();
+            --crossingCount;
+        }
+        crossings[(crossingHead + crossingCount++) % crossings.size()] = cur;
+    }
     if (ev.end)
         insertEvent({cur, true, true, false, static_cast<double>(cur)});
     if (ev.start)
         scheduleStart(cur, ev.detect, ev.begin);
     return ev.start;
+}
+
+// Core B := core A advanced to `cur` with every event known now. Only the samples with a zero crossing or an event
+// need a full step; between them the arming counts come from the rings, so a note start costs a few dozen steps
+// (the crossings of the last E samples), not E.
+void Divide::rederiveCoreB(std::int64_t cur)
+{
+    std::array<SignOp, 4> ops{};
+    coreB = coreA;
+    int steps = 0;
+    auto advance = [&](std::int64_t j) {
+        if (j > coreB.next)
+            coreB.jump(j, ringX(j - 1), ringNeg[static_cast<size_t>(j - 1) % ringNeg.size()],
+                       ringPos[static_cast<size_t>(j - 1) % ringPos.size()]);
+        coreB.step(ringX(j), ringT(j), eventsFor(j, false), ops);
+        ++steps;
+    };
+    size_t ci = 0;
+    while (ci < crossingCount && crossings[(crossingHead + ci) % crossings.size()] < coreB.next)
+        ++ci;
+    int qi = 0;
+    while (qi < queueCount && queue[static_cast<size_t>(qi)].sample < coreB.next)
+        ++qi;
+    for (;;)
+    {
+        const std::int64_t nextCrossing = ci < crossingCount ? crossings[(crossingHead + ci) % crossings.size()] : cur + 1;
+        const std::int64_t nextEvent = qi < queueCount ? queue[static_cast<size_t>(qi)].sample : cur + 1;
+        const std::int64_t j = std::min(nextCrossing, nextEvent);
+        if (j > cur)
+            break;
+        advance(j);
+        while (ci < crossingCount && crossings[(crossingHead + ci) % crossings.size()] <= j)
+            ++ci;
+        while (qi < queueCount && queue[static_cast<size_t>(qi)].sample <= j)
+            ++qi;
+    }
+    if (cur + 1 > coreB.next) // the samples after the last crossing or event, up to cur
+        coreB.jump(cur + 1, ringX(cur), ringNeg[static_cast<size_t>(cur) % ringNeg.size()],
+                   ringPos[static_cast<size_t>(cur) % ringPos.size()]);
+    ++replays;
+    replayStepsMax = std::max(replayStepsMax, steps);
 }
 
 void Divide::applySignOp(SignOp op, std::int64_t at)
@@ -456,11 +553,7 @@ double Divide::processSample(double source)
     else
     {
         if (startNow)
-        {
-            coreB = coreA;
-            for (std::int64_t j = coreA.next; j <= cur; ++j)
-                coreB.step(ringX(j), ringT(j), eventsFor(j, false), ops);
-        }
+            rederiveCoreB(cur);
         else
             coreB.step(ringX(cur), ringT(cur), eventsFor(cur, false), ops);
         confKnown = coreB.conf();
@@ -491,12 +584,16 @@ double Divide::processSample(double source)
         fConstant = coreA.fEst();
     const double fRef =
         fConstant > 0.0 ? std::clamp(fConstant, control.rangeLoHz, control.rangeHiHz) : control.rangeLoHz;
-    constantPeak.setWindow(std::max(1, static_cast<int>(std::ceil(1.25 * fs / fRef))));
+    // fRef >= 15 Hz with clamped controls, so the window fits the one prepared for 15 Hz; the test keeps the int
+    // conversion defined for any value (NaN included)
+    const double cap = std::ceil(1.25 * fs / 15.0);
+    const double window = std::ceil(1.25 * fs / fRef);
+    constantPeak.setWindow(static_cast<int>(window >= 1.0 && window <= cap ? window : cap));
     const double peak = constantPeak.process(std::abs(ringX(m)));
     const double constantScale = peak > 1e-6 ? kConstantLevel / peak : 0.0;
     const double scale = control.follow ? 1.0 : constantScale;
 
-    const double gain = gate.process(confKnown, provKnown);
+    const double gain = gate.process(confKnown, provKnown, look == 0 ? coreA.confirmations : coreB.confirmations);
     p.cutoffTarget = cutoff1;
     p.smoothed = sm1;
     p.constantScale = scale;

@@ -81,3 +81,11 @@ Przegląd: `.superpowers/sdd/2026-10-19-subgen-phase2-prototype/final-review-ind
 | ADR-027 | Drive Fold (R3): głębokość ograniczona do tej przy wejściu −6 dBFS; kryterium aliasingu (D2) dla wejść do +12 dBFS | Zaakceptowana | Fold przy +6 dBFS: −37 dB w paśmie suba (Live); teraz ≤ −90 dB dla wszystkich trybów | 2× w Live (latencja); ograniczenie samego argumentu (nie zmniejsza pasma) |
 | ADR-028 | Kompresor (R4): domyślny detektor Peak; RMS z minimalnym atakiem 0,25·T_sub | Zaakceptowana | rozprysk na onsecie: RMS −39 dB, Peak −56 dB; RMS z minimalnym atakiem −42 dB | RMS domyślny; reguła tętnień dla wszystkich detektorów |
 | ADR-029 | DIVIDE `shape` (R5): przesuw odcięcia filtra wygładzającego (×32 przy 100 %) zamiast mieszania torów | Zaakceptowana | mieszanie torów przesuniętych o 91° dawało −3,1 dB przy 50 %; teraz ±0,05 dB | wyrównanie fazy toru natywnego all-passem |
+
+## F. Faza 3: poprawki przyjęte w trakcie implementacji (2026-10-24)
+
+Ustalenia z implementacji rdzenia C++ (plan Fazy 3, dziennik `.superpowers/sdd/2026-10-20-subgen-phase3-core/progress.md`, poza gitem); wyniki: PHASE2_REPORT §12.
+
+| ID | Decyzja | Status | Uzasadnienie (skrót) | Alternatywy |
+|---|---|---|---|---|
+| ADR-030 | DIVIDE (F-1): poza pewnością tymczasową bramka otwiera się dopiero przy drugiej z kolei wartości pewności ≥ progu otwarcia; wartości liczone na osi czasu dzielnika (wartość tymczasowa się liczy, wartość poniżej progu zeruje licznik), licznik czytany z tym samym wyprzedzeniem co pewność; TRACK bez zmian | Zaakceptowana (2026-10-24) | akord przez domyślne pasmo źródłowe 30–120 Hz otwierał bramkę (−10,3 dB po 100 ms; T-DIV-05 wymaga ≤ −40 dB): dudnienie daje pojedyncze wartości ≥ progu; teraz −50,6 dB (Live) / −89,8 dB (Mix), szum losowy 0 %, onset stopy bez zmian (94 / 95,5 %); koszt: przy SNR 15 / 10 dB bramka otwarta 57 / 18 % czasu zamiast 68 / 27 % | dwie kolejne wartości bez liczenia wartości tymczasowej (pomiar 2026-10-22: onset stopy w Mix 78,8 % zamiast 95,5 %); mediana reszt z większej liczby okresów |

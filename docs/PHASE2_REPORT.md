@@ -255,6 +255,20 @@ Niezależny przegląd (osobna sesja, tylko odczyt) znalazł 2 ustalenia krytyczn
 
 Po poprawkach: **251 testów** zielonych i **93 kontrole** w eksperymentach — wszystkie PASS. Pliki odsłuchowe przeliczone: w UC1 DIVIDE pierwsze 40 ms każdego uderzenia niesie 53–54 % energii suba. Wynikające z tego zmiany są w SPEC 0.3. Rozstrzygnięcia z tej rundy: Załącznik C, pozycje 45–51.
 
+
+## 12. Poprawka F-1 z Fazy 3 (2026-10-24)
+
+Test C++ T-DIV-05 na akordzie (SIG-06) po domyślnym paśmie źródłowym 30–120 Hz — tak DIVIDE dostaje sygnał we wtyczce — znalazł otwartą bramkę: −10,3 dB względem źródła po 100 ms przy wymaganiu ≤ −40 dB; prototyp dawał to samo, a Faza 2 mierzyła akord bez filtra zakresu. Okresy dudniącego akordu czasem przez kilka okresów pasują do trendu liniowego, więc pojedyncze wartości pewności przekraczają próg. Przyjąłeś poprawkę F-1 (ADR-030): poza pewnością tymczasową bramka DIVIDE otwiera się dopiero przy drugiej z kolei wartości ≥ progu otwarcia na osi czasu dzielnika. Prototyp (`divide.confirmations`, `gate_states`) i eksperyment p2_02 liczą już z tą regułą:
+
+| Pomiar | Przed F-1 | Po F-1 |
+|---|---|---|
+| akord po paśmie 30–120 Hz, po 100 ms (Live / Mix) | −10,3 dB | −50,6 / −89,8 dB |
+| akord bez filtra zakresu, po 100 ms (Live / Mix) | −76 / −116 dB | −76,3 / −116,1 dB |
+| pierwsze 40 ms stopy (Live / Mix / Print) | 94 / 95,5 / 95,5 % | 94 / 95,5 / 95,5 % |
+| SNR w paśmie 20 / 15 / 10 / 5 / 3 dB: bramka otwarta | 99 / 68 / 27 / 8 / 4 % | 99 / 57 / 18 / 5 / 2 % |
+| losowy szum 30–120 Hz (5 ziaren) | ≤ 1,5 % | 0 % |
+
+Koszt: w umiarkowanym szumie (SNR 10–15 dB) bramka jest otwarta rzadziej. TRACK zostaje przy jednym potwierdzeniu. Zmiany: SPEC 0.4 §6.1 i §6.2, TEST_PLAN 0.4 (T-DIV-04, T-DIV-05).
 ---
 
 ## Załącznik A — Auto Gain G_c [dB]

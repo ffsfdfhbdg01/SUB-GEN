@@ -228,18 +228,19 @@ def divide(x, fs: float, *, live: bool = False, conf_mode: str = "trend", lookah
 
 
 
-def conf_as_known(x, fs: float, *, live: bool = False, lookahead_s: float = 0.045,
-                  thresh_db: float = -55.0) -> tuple[np.ndarray, np.ndarray]:
-    """Confidence and provisional flag as a causal implementation knows them at each sample (Phase 3 Task 8).
-    divide() resets a note's history at a crossing up to the lookahead before the note is detected, so offline its
-    provisional confidence starts up to the detection delay earlier than a plug-in can know it. For every note start
-    (latest first), the samples [m - E, m), m = ceil(detect), are taken from divide() on x[:m]. In Live the reset
-    happens at the detection, and both are equal."""
+def conf_as_known(x, fs: float, *, live: bool = False, lookahead_s: float = 0.045, thresh_db: float = -55.0,
+                  conf_gate_pct: float = 50.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Confidence, provisional flag and confirmation count (see confirmations) as a causal implementation knows them
+    at each sample (Phase 3 Task 8). divide() resets a note's history at a crossing up to the lookahead before the
+    note is detected, so offline its provisional confidence starts up to the detection delay earlier than a plug-in
+    can know it. For every note start (latest first), the samples [m - E, m), m = ceil(detect), are taken from divide()
+    on x[:m]. In Live the reset happens at the detection, and both are equal."""
     res = divide(x, fs, live=live, lookahead_s=lookahead_s, thresh_db=thresh_db)
     conf, prov = res.conf.copy(), res.provisional.copy()
+    count = confirmations(res.conf, res.provisional, conf_gate_pct)
     look = int(round(lookahead_s * fs))
     if live or look == 0:
-        return conf, prov
+        return conf, prov, count
     x = np.asarray(x, dtype=np.float64)
     for t_det in sorted(activity.note_starts(x, fs, thresh_db=thresh_db).detect.tolist(), reverse=True):
         m = min(int(np.ceil(t_det)), len(x))
@@ -249,7 +250,8 @@ def conf_as_known(x, fs: float, *, live: bool = False, lookahead_s: float = 0.04
         pre = divide(x[:m], fs, live=live, lookahead_s=lookahead_s, thresh_db=thresh_db)
         conf[lo:m] = pre.conf[lo:m]
         prov[lo:m] = pre.provisional[lo:m]
-    return conf, prov
+        count[lo:m] = confirmations(pre.conf, pre.provisional, conf_gate_pct)[lo:m]
+    return conf, prov, count
 
 SHAPE_OCTAVES = 5.0  # shape 100 % raises the smoothing cutoff by 2^5 = 32 times
 
@@ -288,29 +290,56 @@ def smooth_sub(res: DivideResult, fs: float, which: int, *, shape_pct: float = 0
 
 
 REJECT_RELEASE_MS = 10.0  # a provisional opening that the first real confidence does not confirm closes fast
+GATE_CONFIRM = 2  # F-1 (accepted 2026-10-24): DIVIDE opens after two consecutive confidence values >= the threshold
 
 
-def gate_states(conf, conf_gate_pct: float, provisional=None):
+def _change_points(conf, prov) -> np.ndarray:
+    change = (np.diff(conf) != 0.0) | (np.diff(prov.astype(np.int8)) != 0)
+    return np.concatenate([[0], np.flatnonzero(change) + 1])
+
+
+def confirmations(conf, provisional, conf_gate_pct: float) -> np.ndarray:
+    """F-1: per sample, how many consecutive confidence values have reached the opening threshold, counted on the
+    divider's own time line: each change of (conf, provisional) is a new value (the median of five residuals often
+    repeats a value, which counts once); a provisional value counts; any value below the threshold resets the count."""
+    hi = 0.2 + 0.6 * conf_gate_pct / 100.0
+    conf = np.asarray(conf, dtype=np.float64)
+    prov = np.zeros(conf.size, dtype=bool) if provisional is None else np.asarray(provisional, dtype=bool)
+    if conf.size == 0:
+        return np.zeros(0, dtype=np.int64)
+    starts = _change_points(conf, prov)
+    counts = np.empty(len(starts), dtype=np.int64)
+    c = 0
+    for i, (v, pv) in enumerate(zip(conf[starts].tolist(), prov[starts].tolist())):
+        c = c + 1 if (pv or v >= hi) else 0
+        counts[i] = c
+    return np.repeat(counts, np.diff(np.concatenate([starts, [conf.size]])))
+
+
+def gate_states(conf, conf_gate_pct: float, provisional=None, confirm: int = 1, count=None):
     """(open, fast) per sample: the gate decision of gate_mask, and True while the gate is closed after a rejected
-    provisional opening (it then releases over 10 ms instead of 50 ms)."""
+    provisional opening (it then releases over 10 ms instead of 50 ms).
+    confirm >= 2 (DIVIDE, F-1): an opening (other than the provisional one) also needs count >= confirm, the
+    confirmations of the divider's time line (confirmations(); read with the same lookahead as conf)."""
     hi = 0.2 + 0.6 * conf_gate_pct / 100.0
     lo = max(hi - 0.2, 0.5 * hi)
     conf = np.asarray(conf, dtype=np.float64)
     if conf.size == 0:
         return np.zeros(0, dtype=bool), np.zeros(0, dtype=bool)
     prov = np.zeros(conf.size, dtype=bool) if provisional is None else np.asarray(provisional, dtype=bool)
-    change = (np.diff(conf) != 0.0) | (np.diff(prov.astype(np.int8)) != 0)
+    cnt = np.full(conf.size, confirm, dtype=np.int64) if count is None or confirm <= 1 else np.asarray(count)
+    change = (np.diff(conf) != 0.0) | (np.diff(prov.astype(np.int8)) != 0) | (np.diff(cnt) != 0)
     starts = np.concatenate([[0], np.flatnonzero(change) + 1])
     state, was_prov, fast = False, False, False
     states = np.empty(len(starts), dtype=bool)
     fasts = np.empty(len(starts), dtype=bool)
-    for i, (v, pv) in enumerate(zip(conf[starts].tolist(), prov[starts].tolist())):
+    for i, (v, pv, c) in enumerate(zip(conf[starts].tolist(), prov[starts].tolist(), cnt[starts].tolist())):
         if pv:
             state, was_prov, fast = True, True, False
         elif was_prov:
             state, was_prov = v >= hi, False
             fast = not state
-        elif not state and v >= hi:
+        elif not state and v >= hi and c >= confirm:
             state, fast = True, False
         elif state and v < lo:
             state = False
@@ -319,22 +348,29 @@ def gate_states(conf, conf_gate_pct: float, provisional=None):
     return np.repeat(states, reps), np.repeat(fasts, reps)
 
 
-def gate_mask(conf, conf_gate_pct: float, provisional=None) -> np.ndarray:
+def gate_mask(conf, conf_gate_pct: float, provisional=None, confirm: int = 1, count=None) -> np.ndarray:
     """Gate decision with hysteresis: opens at conf >= hi = 0.2 + 0.6*conf_gate/100, closes below
     max(hi - 0.2, hi / 2) (so conf_gate 0 still closes, below 0.1). Provisional samples hold the gate open; when
-    they end, the first real value must reach hi to keep it open."""
+    they end, the first real value must reach hi to keep it open. confirm, count: see gate_states."""
     if np.asarray(conf).size == 0:
         return np.zeros(0, dtype=bool)
-    return gate_states(conf, conf_gate_pct, provisional)[0]
+    return gate_states(conf, conf_gate_pct, provisional, confirm, count)[0]
 
 
-def apply_confidence_gate(y, conf, conf_gate_pct: float, fs: float, provisional=None) -> np.ndarray:
+def divide_gate_mask(res: DivideResult, conf_gate_pct: float) -> np.ndarray:
+    """DIVIDE's gate on a divide() result read without lookahead (F-1: two confirmations)."""
+    return gate_mask(res.conf, conf_gate_pct, res.provisional, GATE_CONFIRM,
+                     confirmations(res.conf, res.provisional, conf_gate_pct))
+
+
+def apply_confidence_gate(y, conf, conf_gate_pct: float, fs: float, provisional=None, confirm: int = 1,
+                          count=None) -> np.ndarray:
     """Multiply by the gate (see gate_mask); the gain follows with 5 ms attack and 50 ms release (10 ms after a
     rejected provisional opening)."""
     y = np.asarray(y)
     if y.size == 0:
         return y.copy()
-    open_, fast = gate_states(conf, conf_gate_pct, provisional)
+    open_, fast = gate_states(conf, conf_gate_pct, provisional, confirm, count)
     a_att = 1.0 - np.exp(-1.0 / (5e-3 * fs))
     a_rel = 1.0 - np.exp(-1.0 / (50e-3 * fs))
     a_fast = 1.0 - np.exp(-1.0 / (REJECT_RELEASE_MS * 1e-3 * fs))

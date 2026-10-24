@@ -315,6 +315,40 @@ TEST_CASE("ConfidenceGate: a provisional opening must be confirmed; a rejected o
     CHECK(std::abs(g / g0 - std::exp(-1.0)) <= 0.02);
 }
 
+TEST_CASE("ConfidenceGate with two confirmations (DIVIDE, F-1) opens only on the second value", "[engines-common]")
+{
+    // divide.gate_mask(conf, 50, None, 2, count) with count = divide.confirmations(conf, None, 50)
+    const std::vector<double> conf{0.0, 0.6, 0.6, 0.65, 0.4, 0.6, 0.29, 0.7, 0.75};
+    const std::vector<int> count{0, 1, 1, 2, 0, 1, 0, 1, 2};
+    ConfidenceGate gate;
+    gate.prepare(kFs);
+    gate.setGate(0.5);
+    gate.setConfirmations(2);
+    std::vector<bool> open;
+    for (size_t i = 0; i < conf.size(); ++i)
+    {
+        gate.process(conf[i], false, count[i]);
+        open.push_back(gate.open());
+    }
+    CHECK(open == std::vector<bool>{false, false, false, true, true, true, false, false, true});
+
+    // a provisional opening is still confirmed by the first real value alone
+    ConfidenceGate g2;
+    g2.prepare(kFs);
+    g2.setGate(0.5);
+    g2.setConfirmations(2);
+    std::vector<bool> open2;
+    const std::vector<double> c2{1.0, 1.0, 0.6, 0.29};
+    const std::vector<bool> p2{true, true, false, false};
+    const std::vector<int> n2{1, 1, 2, 0};
+    for (size_t i = 0; i < c2.size(); ++i)
+    {
+        g2.process(c2[i], p2[i], n2[i]);
+        open2.push_back(g2.open());
+    }
+    CHECK(open2 == std::vector<bool>{true, true, true, false});
+}
+
 TEST_CASE("ConfidenceGate gain: attack 5 ms, release 50 ms", "[engines-common]")
 {
     ConfidenceGate gate;

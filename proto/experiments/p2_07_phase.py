@@ -112,7 +112,9 @@ def main():
     dry = band.range_filter(x, FS, 15.0, 120.0)   # S1 through [range_lo/2, range_hi]
     xb = band.range_filter(x, FS, 30.0, 120.0)    # what the engines see
     res = divide.divide(xb, FS)
-    subs = {"DIVIDE Sub -1 (smooth, gated)": divide.apply_confidence_gate(divide.smooth_sub(res, FS, 1), res.conf, 50.0, FS),
+    subs = {"DIVIDE Sub -1 (smooth, gated)": divide.apply_confidence_gate(
+                divide.smooth_sub(res, FS, 1), res.conf, 50.0, FS, res.provisional, divide.GATE_CONFIRM,
+                divide.confirmations(res.conf, res.provisional, 50.0)),
             "TRIGGER (80 -> 45 Hz)": trigger.render(xb, FS)}
     sig18, curves = {}, {}
     psi_of = lambda q: wrap(q.rot_deg + (180.0 if q.pol < 0 else 0.0))

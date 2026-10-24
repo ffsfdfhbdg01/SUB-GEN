@@ -137,7 +137,7 @@ def main():
     gate = {}
     for mode in ("trend", "diff"):
         r = divide.divide(kick, FS, conf_mode=mode)
-        m = divide.gate_mask(r.conf, 50.0)
+        m = divide.divide_gate_mask(r, 50.0)
         first = np.flatnonzero(m)
         gate[mode] = {"open_fraction_50-300ms": round(float(np.mean(m[int(.05 * FS):int(.30 * FS)])), 3),
                       "first_open_ms": round(1000 * first[0] / FS, 1) if first.size else None}
@@ -156,7 +156,7 @@ def main():
     opens = {}
     for f in (30.0, 55.0, 120.0):
         r = divide.divide(np.concatenate([np.zeros(FS // 5), signals.sine(f, FS, 1.0, -12.0)]), FS)
-        opens[f] = round(1000 * (np.flatnonzero(divide.gate_mask(r.conf, 50.0, r.provisional))[0] - FS // 5) / FS, 1)
+        opens[f] = round(1000 * (np.flatnonzero(divide.divide_gate_mask(r, 50.0))[0] - FS // 5) / FS, 1)
     rec.info("clean sine after silence: gate opens after the note start (ms; provisional, R1)", opens)
 
     # 6. in-band noise sweep, chord and random noise
@@ -165,7 +165,7 @@ def main():
         fr, er = [], []
         for seed in (5, 6, 7, 8):
             r = divide.divide(_inband(60.0, FS, 4.0, snr, seed), FS)
-            fr.append(np.mean(divide.gate_mask(r.conf, 50.0)[FS:]))
+            fr.append(np.mean(divide.divide_gate_mask(r, 50.0)[FS:]))
             er.append(abs(util.zc_freq(r.y1[FS:], FS) - 30.0) / 30.0)
         sweep[snr] = (round(float(np.mean(fr)), 3), round(100 * float(np.mean(er)), 3))
     rec.info("in-band noise: SNR -> (gate open fraction, mean |f/2 error| %)", sweep)
@@ -174,22 +174,28 @@ def main():
     fr_pink = []
     for seed in (4, 5, 6, 7, 8):
         r = divide.divide(signals.pink_noise(FS, 3.0, 30.0, 120.0, level_db=-12.0, seed=seed), FS)
-        fr_pink.append(np.mean(divide.gate_mask(r.conf, 50.0)[int(0.1 * FS):]))
+        fr_pink.append(np.mean(divide.divide_gate_mask(r, 50.0)[int(0.1 * FS):]))
     rec.info("random 30-120 Hz noise: open fraction per seed", [round(float(v), 4) for v in fr_pink])
     rec.check("random noise: worst open fraction", max(fr_pink), "<=", 0.03)
     r = divide.divide(signals.chord(FS, (55.0, 69.0, 82.0), 3.0, -12.0), FS)
-    rec.check("chord 55/69/82 Hz: gate open fraction", float(np.mean(divide.gate_mask(r.conf, 50.0, r.provisional)[int(0.1 * FS):])),
+    rec.check("chord 55/69/82 Hz: gate open fraction", float(np.mean(divide.divide_gate_mask(r, 50.0)[int(0.1 * FS):])),
               "<=", 0.0)
     chord = signals.chord(FS, (55.0, 69.0, 82.0), 3.0, -12.0)
     lev = {q: round(_db(util.rms(render.divide_sub(chord, FS, quality=q)[int(0.1 * FS):]) / util.rms(chord[int(0.1 * FS):])), 1)
            for q in ("live", "mix")}
     rec.info("chord from silence: gated sub level after 100 ms re the source [dB]", lev)
     rec.check("T-DIV-05 chord: sub level after 100 ms (worst of Live, Mix)", max(lev.values()), "<=", -40.0, "dB")
+    chord_b = band.range_filter(chord, FS)  # F-1 (Phase 3): the chord as DIVIDE sees it, through the source band
+    lev_b = {q: round(_db(util.rms(render.divide_sub(chord_b, FS, quality=q)[int(0.1 * FS):]) / util.rms(chord[int(0.1 * FS):])), 1)
+             for q in ("live", "mix")}
+    rec.info("chord through the source band (F-1: was -10.3 dB with one confirmation): sub level after 100 ms [dB]", lev_b)
+    rec.check("T-DIV-05 chord through the source band: sub level after 100 ms (worst of Live, Mix)", max(lev_b.values()),
+              "<=", -40.0, "dB")
 
     # 6b. conf_gate edges (D8 I1): a 55 Hz note (1 s), then random 30-120 Hz noise (2 s): open fraction in the noise
     x = np.concatenate([signals.sine(55.0, FS, 1.0, -12.0), signals.pink_noise(FS, 2.0, 30.0, 120.0, level_db=-12.0, seed=6)])
     r = divide.divide(x, FS)
-    edges = {g: round(float(np.mean(divide.gate_mask(r.conf, g, r.provisional)[int(1.1 * FS):])), 3) for g in (0.0, 1.0, 50.0, 100.0)}
+    edges = {g: round(float(np.mean(divide.divide_gate_mask(r, g)[int(1.1 * FS):])), 3) for g in (0.0, 1.0, 50.0, 100.0)}
     rec.info("conf_gate -> gate open fraction during the noise after a note (was 1.0 at conf_gate 0)", edges)
     rec.check("conf_gate 0: the gate closes in noise (open fraction)", edges[0.0], "<=", 0.5)
 

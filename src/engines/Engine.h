@@ -61,6 +61,10 @@ struct EngineControl
     double hybHarmonic = 0.35;
 };
 
+// The controls clamped to the registry's ranges (PARAMETERS.md), non-finite values replaced by the defaults, so an
+// engine never meets values that would make its arithmetic undefined, whatever the caller passes.
+EngineControl clampControl(const EngineControl& control);
+
 // A sub generator (SPEC §6). out = sub1Gain Sub1 + sub2Gain Sub2, delayed by `lookahead` samples against `source`
 // (SPEC §6.1, §4.4). prepare() may allocate; the other calls must not.
 class Engine
