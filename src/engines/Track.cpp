@@ -41,6 +41,7 @@ void Track::prepare(double sampleRate, int, int lookahead)
     band.prepare(fs);
     activity.prepare(fs);
     notes.prepare(fs);
+    onsets.prepare(fs);
     gate.prepare(fs);
     shaper.prepare(fs);
     peakHold.prepare(static_cast<int>(std::ceil(1.5 * fs / 15.0)) + 1);
@@ -65,6 +66,9 @@ void Track::reset()
     band.reset();
     activity.reset();
     notes.reset();
+    onsets.reset();
+    onsetCount = 0;
+    lastOnset = std::numeric_limits<double>::quiet_NaN();
     gate.reset();
     shaper.reset();
     peakHold.reset();
@@ -108,6 +112,7 @@ void Track::setControl(const EngineControl& requested)
     band.setRange(c.rangeLoHz, c.rangeHiHz, c.rangeSlope);
     activity.setThreshold(c.detThreshDb);
     notes.setThreshold(c.detThreshDb);
+    onsets.set(c.trigThreshDb, c.trigHoldMs, c.trigLockoutMs);
     gate.setGate(c.confGate);
     shaper.set(c.follow, c.envAttackMs, c.envReleaseMs, c.dynamics);
     peakHold.setWindow(static_cast<int>(std::ceil(1.5 * fs / c.rangeLoHz)));
@@ -117,15 +122,18 @@ void Track::setControl(const EngineControl& requested)
     glideSamples = msToSamples(c.trkGlideMs, fs);
 }
 
-void Track::process(std::span<const double> source, std::span<const double>, std::span<double> out)
+void Track::process(std::span<const double> source, std::span<const double> key, std::span<double> out)
 {
     for (size_t i = 0; i < out.size(); ++i)
-        out[i] = processSample(i < source.size() ? source[i] : 0.0);
+        out[i] = processSample(i < source.size() ? source[i] : 0.0, i < key.size() ? key[i] : 0.0);
 }
 
-// Current axis: activity, note starts, the amplitude (delayed by E for the output) and the pitch frames.
-void Track::analyse(std::int64_t cur, double xb)
+// Current axis: activity, note starts, onsets, the amplitude (delayed by E for the output) and the pitch frames.
+void Track::analyse(std::int64_t cur, double xb, double key)
 {
+    if (const auto offset = onsets.process(control.keyMode == KeyMode::Trigger ? key : xb))
+        if (onsetCount < static_cast<int>(onsetQueue.size()))
+            onsetQueue[static_cast<size_t>(onsetCount++)] = static_cast<double>(cur) + *offset;
     const double mute = activity.process(xb);
     const NoteEvent ev = notes.process(xb, activity.active());
     const double amp = shaper.process(peakHold.process(std::abs(xb)), activity.ePeak(), activity.eRms(), ev.start);
@@ -212,10 +220,10 @@ double Track::freeFrequency()
     return std::exp(speedLogF);
 }
 
-double Track::processSample(double source)
+double Track::processSample(double source, double key)
 {
     const std::int64_t cur = n++;
-    analyse(cur, band.process(source));
+    analyse(cur, band.process(source), key);
     const std::int64_t m = cur - look;
     if (m < 0)
         return 0.0;
@@ -229,8 +237,6 @@ double Track::processSample(double source)
         pendingBegin = -1;
         seedPending = true;
         reportBegin = noteBegin;
-        if (control.phaseGen == PhaseGen::Reset)
-            phase1 = phase2 = 0.0;
     }
     TrackProbe p;
     double gateGain = 1.0;
@@ -299,6 +305,19 @@ double Track::processSample(double source)
         {
             reportedDelayMs = 1000.0 * static_cast<double>(m - reportBegin) / fs;
             reportBegin = -1;
+        }
+    }
+    // an onset reaching the delayed axis: Reset puts phase 0 at its fractional time
+    if (onsetCount > 0 && onsetQueue[0] <= static_cast<double>(m))
+    {
+        lastOnset = onsetQueue[0];
+        std::move(onsetQueue.begin() + 1, onsetQueue.begin() + onsetCount, onsetQueue.begin());
+        --onsetCount;
+        if (control.phaseGen == PhaseGen::Reset)
+        {
+            const double since = (static_cast<double>(m) - lastOnset) / fs;
+            phase1 = wrapTwoPi(kTwoPi * f1 * since);
+            phase2 = wrapTwoPi(std::numbers::pi * f1 * since);
         }
     }
     const double envelope = amplitude * gateGain * (control.baseFixed ? 1.0 : voice);

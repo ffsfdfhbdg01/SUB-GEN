@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -11,6 +12,7 @@
 #include "engines/Engine.h"
 #include "engines/EnvelopeShaper.h"
 #include "engines/NoteTracker.h"
+#include "engines/OnsetDetector.h"
 #include "engines/PitchMpm.h"
 #include "engines/PitchPrior.h"
 #include "engines/Pll.h"
@@ -43,7 +45,8 @@ struct TrackProbe
 //    (while it stays above 0.15 rad; and 20 ms after either);
 //  - Free: accumulation of the pitch smoothed in log f (time constant 80 (5/80)^trk_speed ms) after the glide (a jump
 //    of more than a semitone glides linearly in log f over trk_glide);
-//  - Reset: Free with the phases set to 0 at note starts (Task 11 replaces them with the onset detector).
+//  - Reset: Free with the phases set to 0 at the onsets of SPEC §6.4 (trig_thresh, trig_hold, trig_lockout; the key
+//    with key_mode Trigger), at their fractional time.
 // Fixed: a drone at base_freq (Sub -2 at base_freq / 2) gated by the activity, without the confidence gate.
 // prepare() allocates; process() does not.
 class Track final : public Engine
@@ -60,11 +63,12 @@ public:
     // Mix and Print for notes the lookahead covers; Live: about two periods).
     double onsetDelayMs() const { return reportedDelayMs; }
     std::int64_t lastNoteBegin() const { return noteBegin; } // input sample of the last note start (-1: none)
+    double lastOnsetTime() const { return lastOnset; }      // input samples of the last onset applied (NaN: none)
     const TrackProbe& probe() const { return lastProbe; }     // for tests
 
 private:
-    double processSample(double source);
-    void analyse(std::int64_t cur, double xb);
+    double processSample(double source, double key);
+    void analyse(std::int64_t cur, double xb, double key);
     void seedPll(std::int64_t m, std::int64_t cur, double f0);
     double freeFrequency();
     double ringX(std::int64_t i) const { return xbRing[static_cast<size_t>(i) % xbRing.size()]; }
@@ -82,6 +86,7 @@ private:
     SourceBand band;
     Activity activity;
     NoteTracker notes;
+    OnsetDetector onsets;
     ConfidenceGate gate;
     EnvelopeShaper shaper;
     dsp::SlidingMax peakHold;
@@ -93,6 +98,9 @@ private:
     std::vector<double> xbRing;
     std::vector<double> ampRing;   // amplitude x activity mute gain, delayed by E
     std::vector<double> frameLogF; // the read log f of the last glideFrames + 1 frames (NaN without a track)
+    std::array<double, 16> onsetQueue{}; // onsets (input samples) not yet reached by the delayed axis
+    int onsetCount = 0;
+    double lastOnset = 0.0;
 
     std::int64_t n = 0;
     std::int64_t frameCount = 0;

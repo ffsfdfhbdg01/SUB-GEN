@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, envelope, render, signals, svf, track, util
+from subgen_proto import activity, divide, envelope, render, signals, svf, track, trigger, util
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -225,8 +225,28 @@ def export_pitch() -> dict[str, np.ndarray]:
     return out
 
 
+def trigger_cases(fs: float = 48000) -> dict[str, tuple[np.ndarray, dict]]:
+    """Task 11: raw input (the C++ test runs it through its own SourceBand, 30-120 Hz) and trigger.render options. The
+    engine's defaults are Restart, velocity 60 %, Follow, -30 dBFS, hold 20 ms, lockout 60 ms, 80 -> 45 Hz (Fixed
+    base_freq) in 30 ms, attack 2 ms, T60 350 ms, phase 0. tests/unit/test_trigger.cpp builds the same inputs."""
+    defaults = dict(retrigger="restart", velocity_pct=60.0, follow=True)
+    return {
+        "kick3": (signals.kick(fs, n_hits=3, spacing=0.2, level_db=-6.0), defaults),
+        "kick1_sub2": (signals.kick(fs, n_hits=1, spacing=0.2, level_db=-6.0),
+                       {**defaults, "sub1_level": 0.0, "sub2_level": 1.0}),
+        "legato_close": (signals.kick(fs, n_hits=3, spacing=0.1, level_db=-6.0),
+                         {**defaults, "retrigger": "legato", "thresh_db": -20.0, "hold_ms": 0.0}),
+    }
+
+
+def export_trigger() -> dict[str, np.ndarray]:
+    """Task 11: trigger.render (the engine output, aligned with the input) on x_b = source_band(input)."""
+    fs = 48000
+    return {f"out/{name}": trigger.render(source_band(x, fs), fs, **kw) for name, (x, kw) in trigger_cases(fs).items()}
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
-           "divide": export_divide, "pitch": export_pitch}
+           "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger}
 
 
 def main(argv: list[str] | None = None) -> int:
