@@ -15,7 +15,8 @@ constexpr double kCrossfadeMs = 30.0;
 
 void EngineHost::prepare(double sampleRate, int block, Quality quality)
 {
-    fs = sampleRate;
+    fs = std::isfinite(sampleRate) && sampleRate > 0.0 ? sampleRate : 48000.0; // a broken rate must not size the rings
+
     maxBlock = std::max(1, block);
     lookahead = engineLookaheadSamples(quality, fs);
     for (const EngineType t : {EngineType::Divide, EngineType::Track, EngineType::Trigger, EngineType::Harmonic,
@@ -26,7 +27,7 @@ void EngineHost::prepare(double sampleRate, int block, Quality quality)
         e.setControl(control);
     }
     scratch.assign(static_cast<size_t>(maxBlock), 0.0);
-    const auto ring = static_cast<size_t>(std::ceil(kWarmUpSeconds * fs));
+    const auto ring = std::max<size_t>(1, static_cast<size_t>(std::ceil(kWarmUpSeconds * fs)));
     sourceRing.assign(ring, 0.0);
     keyRing.assign(ring, 0.0);
     ringPosition = 0;
@@ -92,6 +93,11 @@ void EngineHost::beginSwitch()
 
 void EngineHost::process(std::span<const double> source, std::span<const double> key, std::span<double> out)
 {
+    if (scratch.empty() || sourceRing.empty()) // not prepared: silence
+    {
+        std::fill(out.begin(), out.end(), 0.0);
+        return;
+    }
     for (size_t pos = 0; pos < out.size(); pos += scratch.size())
     {
         const size_t len = std::min(scratch.size(), out.size() - pos);

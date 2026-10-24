@@ -7,6 +7,7 @@
 #include <cmath>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -183,6 +184,32 @@ TEST_CASE("re-prepare at a new sample rate clears every engine", "[engine-host]"
         fresh.setEngine(type);
         const auto x = sig::bass808(96000.0);
         CHECK(runHost(host, x, 64) == runHost(fresh, x, 64));
+    }
+}
+
+TEST_CASE("the host is silent before prepare and takes a usable sample rate from a broken one", "[engine-host]")
+{
+    // security review: an empty warm-up ring (a sample rate of 0 or NaN) divided by zero, and an unprepared host
+    // looped forever on its empty scratch buffer
+    const auto x = sig::sine(55.0, kFs, 0.1, -12.0);
+    std::vector<double> out(x.size(), 1.0);
+    const std::vector<double> key(x.size(), 0.0);
+    EngineHost unprepared;
+    unprepared.process(x, key, out);
+    CHECK(std::all_of(out.begin(), out.end(), [](double v) { return v == 0.0; }));
+    Hybrid hybrid; // the same chunk loop
+    std::fill(out.begin(), out.end(), 1.0);
+    hybrid.process(x, key, out);
+    CHECK(std::all_of(out.begin(), out.end(), [](double v) { return v == 0.0; }));
+    for (const double fs : {0.0, -48000.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()})
+    {
+        INFO("fs " << fs);
+        EngineHost host;
+        host.prepare(fs, 64, Quality::Mix);
+        host.setControl(EngineControl{});
+        CHECK(host.latencySamples() == engineLookaheadSamples(Quality::Mix, 48000.0));
+        host.process(x, key, out);
+        CHECK(std::all_of(out.begin(), out.end(), [](double v) { return std::isfinite(v); }));
     }
 }
 

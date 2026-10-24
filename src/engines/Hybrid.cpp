@@ -27,6 +27,11 @@ void Hybrid::setControl(const EngineControl& requested)
 
 void Hybrid::process(std::span<const double> source, std::span<const double> key, std::span<double> out)
 {
+    if (scratch.empty()) // not prepared: silence
+    {
+        std::fill(out.begin(), out.end(), 0.0);
+        return;
+    }
     for (size_t pos = 0; pos < out.size(); pos += scratch.size())
     {
         const size_t len = std::min(scratch.size(), out.size() - pos);
