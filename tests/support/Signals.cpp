@@ -8,6 +8,8 @@
 #include <numbers>
 #include <stdexcept>
 
+#include "dsp/FilterCascade.h"
+#include "dsp/FilterDesign.h"
 #include "support/Dft.h"
 
 namespace subgen::test::signals
@@ -99,6 +101,29 @@ std::vector<double> bass808(double fs, const Bass808Params& p)
         const double attack = std::min(t / 0.003, 1.0);
         const double release = t > p.sustain ? std::pow(10.0, -3.0 * (t - p.sustain) / 0.15) : 1.0;
         x[i] = (std::sin(phi) + h2 * std::sin(2.0 * phi)) * attack * release;
+    }
+    normalizePeak(x, p.levelDb);
+    return x;
+}
+
+std::vector<double> bassPluck(double fs, double f0, const BassPluckParams& p)
+{
+    std::vector<double> x(length(fs, p.dur));
+    dsp::FilterCascade body;
+    body.set(dsp::designFilter(dsp::FilterFamily::Butterworth, dsp::FilterKind::LowPass, 4, 400.0, fs));
+    const std::size_t nb = length(fs, 0.005);
+    const auto burst = xorshiftNoise(nb, p.seed);
+    for (std::size_t i = 0; i < x.size(); ++i)
+    {
+        const double t = static_cast<double>(i) / fs;
+        const double saw = 2.0 * std::fmod(f0 * t, 1.0) - 1.0;
+        const double env = std::min(t / 0.002, 1.0) * std::pow(10.0, -3.0 * t / 0.6);
+        x[i] = body.process(saw) * env;
+        if (i < nb) // numpy.hanning: 0.5 + 0.5 cos(pi m / (M - 1)), m = 1 - M, 3 - M, ..., M - 1
+        {
+            const double m = 2.0 * static_cast<double>(i) + 1.0 - static_cast<double>(nb);
+            x[i] += 0.1 * burst[i] * (0.5 + 0.5 * std::cos(std::numbers::pi * m / static_cast<double>(nb - 1)));
+        }
     }
     normalizePeak(x, p.levelDb);
     return x;

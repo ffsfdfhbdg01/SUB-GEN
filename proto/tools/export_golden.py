@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, envelope, render, signals, svf, util
+from subgen_proto import activity, divide, envelope, render, signals, svf, track, util
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -204,8 +204,29 @@ def export_divide() -> dict[str, np.ndarray]:
     return out
 
 
+def pitch_cases(fs: float = 48000) -> dict[str, np.ndarray]:
+    """Task 9: raw input of an SIG-04 and an SIG-05 note (the C++ test runs it through its own SourceBand, 30-120 Hz).
+    tests/unit/test_pitch.cpp builds the same inputs."""
+    return {"bass808_a1": signals.bass_808(fs, f_end=55.0, glide_from=110.0, harm2_db=-8.0),
+            "pluck_e1": signals.bass_pluck(fs, 41.2, noise="xorshift", seed=1)}
+
+
+def export_pitch() -> dict[str, np.ndarray]:
+    """Task 9: track.mpm (f_min 30 Hz = range_lo, prior off) on x_b = source_band(input): frame times in samples, raw f0
+    (NaN without an estimate) and confidence, and track.apply_prior of them."""
+    fs = 48000
+    out = {}
+    for name, x in pitch_cases(fs).items():
+        trk = track.mpm(source_band(x, fs), fs, f_min=30.0, prior=False)
+        out[f"t/{name}"] = np.round(trk.t * fs)
+        out[f"f0_raw/{name}"] = trk.f0
+        out[f"conf/{name}"] = trk.conf
+        out[f"f0/{name}"] = track.apply_prior(trk.f0, trk.conf)
+    return out
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
-           "divide": export_divide}
+           "divide": export_divide, "pitch": export_pitch}
 
 
 def main(argv: list[str] | None = None) -> int:

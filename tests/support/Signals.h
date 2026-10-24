@@ -42,6 +42,16 @@ struct Bass808Params
 };
 std::vector<double> bass808(double fs, const Bass808Params& p = {});
 
+// SIG-05 as signals.bass_pluck(noise="xorshift"): sawtooth low-passed at 400 Hz (4th-order Butterworth), 2 ms attack,
+// 0.6 s T60 decay, plus a 5 ms Hann-windowed xorshift burst for the pluck.
+struct BassPluckParams
+{
+    double dur = 0.8;
+    double levelDb = -6.0;
+    std::uint64_t seed = 1;
+};
+std::vector<double> bassPluck(double fs, double f0, const BassPluckParams& p = {});
+
 std::vector<double> twoTone(double f1, double f2, double fs, double dur, double levelDb = -12.0);
 std::vector<double> square(double f, double fs, double dur, double levelDb = 0.0);
 std::vector<double> impulse(std::size_t n, double amp = 0.5);

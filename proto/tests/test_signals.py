@@ -85,6 +85,15 @@ class TestBass(unittest.TestCase):
         f, _ = util.peak_freq(a[int(0.1 * FS):int(0.6 * FS)], FS, 40.0, 70.0)
         self.assertLess(abs(f - 55.0), 0.5)
 
+    def test_bass_pluck_xorshift_burst_is_reproducible(self):
+        # the C++ tests build SIG-05 with the xorshift burst (tests/support/Signals: bassPluck)
+        a = signals.bass_pluck(FS, 41.2, noise="xorshift", seed=1)
+        self.assertTrue(np.array_equal(a, signals.bass_pluck(FS, 41.2, noise="xorshift", seed=1)))
+        self.assertFalse(np.array_equal(a, signals.bass_pluck(FS, 41.2, noise="xorshift", seed=2)))
+        self.assertAlmostEqual(float(np.max(np.abs(a))), 10 ** (-6 / 20), places=12)
+        with self.assertRaises(ValueError):
+            signals.bass_pluck(FS, 41.2, noise="xorshift", seed=0)
+
     def test_chord_three_equal_tones(self):
         x = signals.chord(FS, (55, 69, 82), 2.0, level_db=-12.0)
         amps = [util.peak_freq(x, FS, f - 3.0, f + 3.0)[1] for f in (55.0, 69.0, 82.0)]

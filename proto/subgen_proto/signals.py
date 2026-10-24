@@ -59,9 +59,10 @@ def bass_808(fs, f_end=45.0, glide_from=90.0, glide_ms=80.0, harm2_db=-8.0, sust
     return _normalize_peak(x * attack * release, level_db)
 
 
-def bass_pluck(fs, f0, dur=0.8, level_db=-6.0, seed=0) -> np.ndarray:
+def bass_pluck(fs, f0, dur=0.8, level_db=-6.0, seed=0, noise="normal") -> np.ndarray:
     """SIG-05: sawtooth low-passed at 400 Hz (4th-order Butterworth), 2 ms attack, 0.6 s T60 decay,
-    plus a 5 ms seeded noise burst for the pluck."""
+    plus a 5 ms seeded noise burst for the pluck. noise="xorshift" takes the burst from xorshift_noise (seed >= 1)
+    instead of a normal generator, so the C++ tests build the same signal (tests/support/Signals: bassPluck)."""
     n = _n(fs, dur)
     t = np.arange(n) / fs
     saw = 2.0 * ((f0 * t) % 1.0) - 1.0
@@ -69,7 +70,8 @@ def bass_pluck(fs, f0, dur=0.8, level_db=-6.0, seed=0) -> np.ndarray:
     env = np.minimum(t / 0.002, 1.0) * 10.0 ** (-3.0 * t / 0.6)
     burst = np.zeros(n)
     nb = _n(fs, 0.005)
-    burst[:nb] = 0.1 * np.random.default_rng(seed).standard_normal(nb) * np.hanning(nb)
+    src = xorshift_noise(nb, seed) if noise == "xorshift" else np.random.default_rng(seed).standard_normal(nb)
+    burst[:nb] = 0.1 * src * np.hanning(nb)
     return _normalize_peak(body * env + burst, level_db)
 
 
