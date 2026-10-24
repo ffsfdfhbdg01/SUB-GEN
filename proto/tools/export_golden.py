@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, envelope, harmonic, render, signals, svf, track, trigger, util
+from subgen_proto import activity, divide, drive, envelope, harmonic, render, signals, svf, track, trigger, util
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -269,8 +269,35 @@ def export_harmonic() -> dict[str, np.ndarray]:
     return out
 
 
+DRIVE_DRIVES = (25.0, 50.0, 100.0)
+DRIVE_GAIN_DRIVES = (5.0, 10.0, 25.0, 50.0, 75.0, 100.0)
+
+
+def export_drive() -> dict[str, np.ndarray]:
+    """Task 14: amplitudes of harmonics 1..60 of a 55 Hz sine (2 s; bins of the 1-2 s second = Hz) through the 16x
+    reference (drive.reference_output: ADAA at 16x; f_sub1 40 Hz, no Tone, no Auto Gain) at -12 dBFS for the five
+    characters and drive 25/50/100 % (Fold also at +6 dBFS, where its depth cap acts); and the Auto Gain G_c [dB] of
+    PHASE2_REPORT Annex A (drive 5/10/25/50/75/100 % for balance -100, 0 and +100, in that order)."""
+    fs = 48000
+    out = {}
+    for level in (-12.0, 6.0):
+        x = signals.sine(55.0, fs, 2.0, level)
+        for mode in drive.MODES:
+            if level > 0.0 and mode != "fold":
+                continue
+            for d in DRIVE_DRIVES:
+                ref = drive.reference_output(x, fs, drive_pct=d, mode=mode, tone_hz=None, auto_gain=False)[fs:2 * fs]
+                spec = np.abs(np.fft.rfft(ref)) * 2.0 / len(ref)
+                out[f"harmonics/{mode}/{int(d)}/{int(level)}"] = np.array([spec[int(round(k * 55.0))] for k in range(1, 61)])
+    for mode in drive.MODES:
+        out[f"gain/{mode}"] = np.array([drive.auto_gain_db(mode, d, b) for b in (-100.0, 0.0, 100.0)
+                                        for d in DRIVE_GAIN_DRIVES])
+    return out
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
-           "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic}
+           "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic,
+           "drive": export_drive}
 
 
 def main(argv: list[str] | None = None) -> int:
