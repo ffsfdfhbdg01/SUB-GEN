@@ -16,10 +16,14 @@
 #include "engines/PitchPrior.h"
 #include "engines/SourceBand.h"
 #include "support/Golden.h"
+#include "support/PitchEval.h"
 #include "support/Signals.h"
 
 using namespace subgen;
 using namespace subgen::engines;
+using subgen::test::evaluatePitch;
+using subgen::test::median;
+using Truth = subgen::test::PitchTruth;
 namespace sig = subgen::test::signals;
 
 namespace
@@ -63,6 +67,8 @@ Track detect(const std::vector<double>& x, double fs, double fMin, int block = 5
     return trk;
 }
 
+subgen::test::PitchTrack asTrack(const Track& trk) { return {trk.t, trk.f0, trk.conf}; }
+
 std::vector<double> sourceBand(const std::vector<double>& x, double fs, double lo, double hi)
 {
     SourceBand band;
@@ -74,16 +80,7 @@ std::vector<double> sourceBand(const std::vector<double>& x, double fs, double l
     return y;
 }
 
-double median(std::vector<double> v) // numpy.median
-{
-    std::sort(v.begin(), v.end());
-    const size_t n = v.size();
-    return n % 2 == 1 ? v[n / 2] : 0.5 * (v[n / 2 - 1] + v[n / 2]);
-}
-
 double midiHz(int note) { return 440.0 * std::pow(2.0, (note - 69) / 12.0); }
-
-using Truth = std::function<double(double)>; // Hz at time t (s); NaN where no note sounds
 
 Truth constant(double f)
 {
@@ -94,101 +91,6 @@ Truth truth808(double fEnd, double glideFrom)
 {
     const double tau = 0.08 / 3.0;
     return [=](double t) { return t >= 0.0 && t < 0.8 ? fEnd + (glideFrom - fEnd) * std::exp(-std::max(t, 0.0) / tau) : kNaN; };
-}
-
-struct Score
-{
-    double centsMedian = kNaN;
-    int octaveErrors = 0;
-    double lockTime = kNaN;
-    double lag = 0.0;
-    double confOpen = kNaN;
-};
-
-// track.evaluate from `onset` on: the truth is shifted by the lag that best explains the track where it moves faster
-// than 500 cents/s; median |error| from the lock (3 frames in a row within 50 cents); octave errors = frames with
-// conf >= 0.5 more than 600 cents off; confOpen = the first frame with conf >= 0.5.
-Score evaluate(const Track& trk, const Truth& truth, double onset)
-{
-    std::vector<double> t, f, conf;
-    for (size_t i = 0; i < trk.t.size(); ++i)
-        if (trk.t[i] >= onset - 1e-12)
-        {
-            t.push_back(trk.t[i]);
-            f.push_back(trk.f0[i]);
-            conf.push_back(trk.conf[i]);
-        }
-    Score s;
-    if (t.empty())
-        return s;
-    auto errorCents = [&](double lag) {
-        std::vector<double> e(t.size(), kNaN);
-        for (size_t i = 0; i < t.size(); ++i)
-        {
-            const double tr = truth(std::max(t[i] - lag, onset));
-            if (std::isfinite(tr) && tr > 0.0 && std::isfinite(f[i]) && f[i] > 0.0)
-                e[i] = 1200.0 * std::log2(f[i] / tr);
-        }
-        return e;
-    };
-    const double h = 0.005;
-    std::vector<bool> moving(t.size());
-    int movingCount = 0;
-    for (size_t i = 0; i < t.size(); ++i)
-    {
-        const double rate = std::abs(1200.0 * std::log2(truth(t[i] + h) / truth(t[i] - h))) / (2.0 * h);
-        moving[i] = std::isfinite(rate) && rate >= 500.0;
-        movingCount += moving[i] ? 1 : 0;
-    }
-    if (movingCount >= 5)
-    {
-        double best = std::numeric_limits<double>::infinity();
-        for (int k = 0; k <= 500; ++k) // 0 ... 250 ms in 0.5 ms steps
-        {
-            const double tau = k * 0.0005;
-            const auto e = errorCents(tau);
-            double sum = 0.0;
-            int count = 0;
-            for (size_t i = 0; i < e.size(); ++i)
-                if (moving[i] && std::isfinite(e[i]))
-                {
-                    sum += std::abs(e[i]);
-                    ++count;
-                }
-            if (count >= 5 && sum / count < best - 1e-9)
-            {
-                best = sum / count;
-                s.lag = tau;
-            }
-        }
-    }
-    const auto e = errorCents(s.lag);
-    auto good = [&](size_t i) { return std::isfinite(e[i]) && std::abs(e[i]) <= 50.0; };
-    size_t start = 0;
-    bool locked = false;
-    for (size_t i = 0; i + 3 <= e.size() && !locked; ++i)
-        if (good(i) && good(i + 1) && good(i + 2))
-        {
-            start = i;
-            locked = true;
-        }
-    if (locked)
-        s.lockTime = t[start] - onset;
-    std::vector<double> post;
-    for (size_t i = start; i < e.size(); ++i)
-        if (std::isfinite(e[i]))
-            post.push_back(std::abs(e[i]));
-    if (!post.empty())
-        s.centsMedian = median(post);
-    for (size_t i = 0; i < e.size(); ++i)
-        s.octaveErrors += std::isfinite(e[i]) && conf[i] >= 0.5 && std::abs(e[i]) > 600.0 ? 1 : 0;
-    for (size_t i = 0; i < conf.size(); ++i)
-        if (conf[i] >= 0.5)
-        {
-            s.confOpen = t[i] - onset;
-            break;
-        }
-    return s;
 }
 
 std::vector<double> afterSilence(double f, double fs)
@@ -237,7 +139,7 @@ TEST_CASE("T-TRK-01 SIG-01/04/05: median error <= 0.5 % and 0 octave errors (con
         for (const auto& c : cases)
         {
             INFO("fs " << fs << ", " << c.name);
-            const auto s = evaluate(detect(sourceBand(c.x, fs, 25.0, 250.0), fs, 25.0), c.truth, 0.0);
+            const auto s = evaluatePitch(asTrack(detect(sourceBand(c.x, fs, 25.0, 250.0), fs, 25.0)), c.truth, 0.0);
             CHECK(s.centsMedian <= kCents05Pct);
             CHECK(s.octaveErrors == 0);
             CHECK(std::isfinite(s.lockTime));
@@ -314,8 +216,8 @@ TEST_CASE("confidence reaches 0.5 within 2 periods + 4 ms of a note after silenc
         for (const double f : {30.0, 41.2, 55.0, 80.0, 120.0})
         {
             INFO("fs " << fs << " f " << f);
-            const auto s = evaluate(detect(afterSilence(f, fs), fs, 20.0), [f](double t) { return t >= 0.2 ? f : kNaN; },
-                                    0.2);
+            const auto s = evaluatePitch(asTrack(detect(afterSilence(f, fs), fs, 20.0)),
+                                         [f](double t) { return t >= 0.2 ? f : kNaN; }, 0.2);
             CHECK(s.confOpen > 1.5 / f); // not before 1.5 periods
             CHECK(s.confOpen <= 2.0 / f + 0.004);
             CHECK(s.octaveErrors == 0);

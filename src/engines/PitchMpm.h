@@ -39,6 +39,7 @@ public:
 
     int maxFrames(int numSamples) const { return numSamples / (decim * hop) + 1; } // frames one call can produce
     int decimation() const { return decim; }
+    int hopSamples() const { return decim * hop; } // input samples between frames
     double decimatedRate() const { return fsD; }
     int windowSamples() const { return window; }
     double lastDecimated() const { return lastY; } // for tests

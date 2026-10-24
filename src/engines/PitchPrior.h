@@ -49,6 +49,7 @@ public:
         return last;
     }
 
+    bool tracking() const { return hasCurrent; } // a track is held (seeded and not forgotten)
     void reset() { *this = PitchPrior{}; }
 
 private:
