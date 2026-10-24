@@ -77,5 +77,6 @@ public:
     virtual void process(std::span<const double> source, std::span<const double> key, std::span<double> out) = 0;
     virtual double subFrequencyHz() const = 0;
     virtual double confidence() const = 0;
+    virtual bool gateOpen() const { return true; } // the confidence gate is open (engines without one: true)
 };
 } // namespace subgen::engines

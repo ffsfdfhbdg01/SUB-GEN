@@ -58,6 +58,7 @@ public:
     void process(std::span<const double> source, std::span<const double> key, std::span<double> out) override;
     double subFrequencyHz() const override { return lastProbe.subFreq; }
     double confidence() const override { return lastProbe.conf; }
+    bool gateOpen() const override { return control.baseFixed || gate.open(); }
 
     // The last note's delay from its start to the gate opening on the output (0 when the gate was open in time:
     // Mix and Print for notes the lookahead covers; Live: about two periods).

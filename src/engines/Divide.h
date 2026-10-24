@@ -151,10 +151,10 @@ public:
     void process(std::span<const double> source, std::span<const double> key, std::span<double> out) override;
     double subFrequencyHz() const override { return 0.5 * lastFEst; }
     double confidence() const override { return lastConfKnown; }
+    bool gateOpen() const override { return gate.open(); }
 
     // for tests
     double lastPeriodSamples() const { return coreA.lastPeriod; }
-    bool gateOpen() const { return gate.open(); }
     int resetCount() const { return coreA.resets; }
     const DivideProbe& probe() const { return lastProbe; }
     int replayCount() const { return replays; }           // re-derivations of core B (note starts in Mix and Print)
