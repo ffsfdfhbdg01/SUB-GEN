@@ -103,12 +103,15 @@ void PhaseTool::setParams(const PhaseParams& p)
     polarity.setTarget(inverted);
 }
 
-void PhaseTool::process(std::span<double> block)
+void PhaseTool::process(std::span<double> block, std::span<double> chainAOut)
 {
-    for (auto& x : block)
+    for (size_t i = 0; i < block.size(); ++i)
     {
+        double& x = block[i];
         double a = 0.0, b = 0.0;
         pair.process(x, a, b);
+        if (!chainAOut.empty())
+            chainAOut[i] = a;
         const double deg = rotation.next();
         if (deg != madeDeg)
         {

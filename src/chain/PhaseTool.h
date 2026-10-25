@@ -45,7 +45,9 @@ public:
     void prepare(double fs);
     void reset();
     void setParams(const PhaseParams& params);
-    void process(std::span<double> block);
+    void process(std::span<double> block) { process(block, {}); }
+    // also writes chain A's output (the sub at theta 0, before the polarity) into chainAOut when it is not empty
+    void process(std::span<double> block, std::span<double> chainAOut);
     void chainA(std::span<const double> in, std::span<double> out) const;
     double groupDelayMs(double fHz) const { return pair.groupDelayMsA(fHz); }
 
