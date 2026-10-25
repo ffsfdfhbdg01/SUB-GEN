@@ -34,6 +34,13 @@ target_link_libraries(subgen_dsp_tests
 subgen_strict_warnings(subgen_dsp_tests)
 catch_discover_tests(subgen_dsp_tests)
 
+# Benchmarks (SPEC_BUILD_RELEASE §7: the median and p99 time per block): run by hand, not by ctest.
+file(GLOB bench_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bench/bench_*.cpp")
+add_executable(subgen_bench ${bench_sources})
+target_link_libraries(subgen_bench
+    PRIVATE subgen_dsp subgen_test_support Catch2::Catch2WithMain juce::juce_recommended_config_flags)
+subgen_strict_warnings(subgen_bench)
+
 # Like JUCE's own plug-in wrappers: link the shared-code static library and re-export its include directories (its
 # public compile definitions, JucePlugin_* and the module flags, come with the link).
 if(SUBGEN_BUILD_PLUGIN)
