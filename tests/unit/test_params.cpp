@@ -93,7 +93,7 @@ TEST_CASE("quality, filt_phase and align_ms are not automatable", "[params]")
     }
 }
 
-TEST_CASE("-60 dB Off maps to gain 0.0 exactly", "[params]")
+TEST_CASE("Off at -60 dB maps to gain 0.0 exactly", "[params]")
 {
     CHECK(gainFromDb(-60.0, true) == 0.0);
     CHECK(gainFromDb(-60.0, false) == std::pow(10.0, -3.0));
