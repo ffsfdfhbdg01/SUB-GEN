@@ -239,10 +239,23 @@ def trigger_cases(fs: float = 48000) -> dict[str, tuple[np.ndarray, dict]]:
     }
 
 
+TRIGGER_WINDOW = 4096
+TRIGGER_SPACING = {"kick3": 0.2, "kick1_sub2": 0.2, "legato_close": 0.1}  # the cases' hit spacing (s)
+
+
 def export_trigger() -> dict[str, np.ndarray]:
-    """Task 11: trigger.render (the engine output, aligned with the input) on x_b = source_band(input)."""
+    """Task 11: trigger.render (the engine output, aligned with the input) on x_b = source_band(input), in windows of
+    TRIGGER_WINDOW samples from each hit's start (the onset, attack, early decay and the retrigger); starts/<case>
+    lists them."""
     fs = 48000
-    return {f"out/{name}": trigger.render(source_band(x, fs), fs, **kw) for name, (x, kw) in trigger_cases(fs).items()}
+    out = {}
+    for name, (x, kw) in trigger_cases(fs).items():
+        y = trigger.render(source_band(x, fs), fs, **kw)
+        hit = int(round(TRIGGER_SPACING[name] * fs))
+        starts = np.arange(0, len(x), hit)
+        out[f"starts/{name}"] = starts.astype(np.float64)
+        out[f"out/{name}"] = np.concatenate([y[s:s + TRIGGER_WINDOW] for s in starts])
+    return out
 
 
 HARMONIC_WINDOW = 4096

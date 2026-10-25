@@ -518,12 +518,14 @@ TEST_CASE("golden voice within 1e-9", "[trigger]")
     for (const auto& c : cases)
     {
         INFO(c.name);
-        const auto want = golden[std::string("out/") + c.name];
+        const auto want = golden[std::string("out/") + c.name]; // 4096-sample windows from each hit's start
+        const auto starts = golden[std::string("starts/") + c.name];
         const auto r = runTrigger(c.input, Quality::Mix, c.control);
-        REQUIRE(r.out.size() == want.size());
+        REQUIRE(want.size() == 4096 * starts.size());
         double worst = 0.0;
-        for (size_t i = 0; i < want.size(); ++i)
-            worst = std::max(worst, std::abs(r.out[i] - want[i]));
+        for (size_t w = 0; w < starts.size(); ++w)
+            for (size_t i = 0; i < 4096; ++i)
+                worst = std::max(worst, std::abs(r.out[static_cast<size_t>(starts[w]) + i] - want[w * 4096 + i]));
         CHECK(worst <= 1e-9);
     }
 }
