@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, drive, envelope, harmonic, render, signals, svf, track, trigger, util
+from subgen_proto import activity, divide, drive, dynamics, envelope, harmonic, render, signals, svf, track, trigger, util
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -308,9 +308,46 @@ def export_drive() -> dict[str, np.ndarray]:
     return out
 
 
+DYNAMICS_STEP = 32  # every 32nd sample of the trajectories
+
+
+def dynamics_inputs(fs: float = 48000) -> dict[str, np.ndarray]:
+    """Task 15: the inputs (the dynamics work on the sub path: no source band). tests/unit/test_dynamics.cpp builds the
+    same."""
+    return {
+        "peak_onset": np.concatenate([np.zeros(int(fs) // 2), signals.sine(40.0, fs, 0.4, level_db=-6.0)]),
+        "rms_autorel": np.concatenate([signals.sine(100.0, fs, 0.3, level_db=-6.0), signals.sine(100.0, fs, 0.5, level_db=-40.0)]),
+        "peak_knee": np.concatenate([signals.sine(55.0, fs, 0.2, level_db=lv) for lv in (-30.0, -20.0, -10.0)]),
+        "gate": np.concatenate([signals.sine(100.0, fs, 0.3, level_db=-20.0), signals.sine(100.0, fs, 0.4, level_db=-60.0)]),
+    }
+
+
+def export_dynamics() -> dict[str, np.ndarray]:
+    """Task 15: the compressor's gain reduction (dB; SPEC §7.4 without the 0.1 ripple rule, D7) and the gate's gain (dB),
+    every DYNAMICS_STEP-th sample: Peak at a 40 Hz onset (-30 dBFS, 4:1, attack 1 ms, release 100 ms); RMS with auto
+    release on a 100 Hz level drop (-30 dBFS, 4:1, knee 6 dB, attack 5 ms, release 50 ms); Peak through the knee
+    (-20 dBFS, 3:1, knee 6 dB, attack 10 ms, release 150 ms, 55 Hz steps); the gate on a 100 Hz drop (-30 dBFS,
+    range -40 dB, hold 40 ms, release 120 ms)."""
+    fs = 48000
+    x = dynamics_inputs(fs)
+    s = slice(None, None, DYNAMICS_STEP)
+    out = {
+        "gr/peak_onset": dynamics.compressor(x["peak_onset"], fs, thresh_db=-30.0, ratio=4.0, knee_db=0.0, attack_ms=1.0,
+                                             release_ms=100.0, detect="peak", f_sub1=40.0, ripple_rule=False)[1][s],
+        "gr/rms_autorel": dynamics.compressor(x["rms_autorel"], fs, thresh_db=-30.0, ratio=4.0, knee_db=6.0, attack_ms=5.0,
+                                              release_ms=50.0, detect="rms", f_sub1=100.0, ripple_rule=False,
+                                              auto_release=True)[1][s],
+        "gr/peak_knee": dynamics.compressor(x["peak_knee"], fs, thresh_db=-20.0, ratio=3.0, knee_db=6.0, attack_ms=10.0,
+                                            release_ms=150.0, detect="peak", f_sub1=55.0, ripple_rule=False)[1][s],
+    }
+    _, mask = dynamics.gate(x["gate"], fs, thresh_db=-30.0, range_db=-40.0, hold_ms=40.0, release_ms=120.0, f_sub1=100.0)
+    out["gain/gate"] = dynamics.gate_gain_db(mask, fs, range_db=-40.0, attack_ms=2.0, release_ms=120.0, f_sub1=100.0)[s]
+    return out
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
            "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic,
-           "drive": export_drive}
+           "drive": export_drive, "dynamics": export_dynamics}
 
 
 def main(argv: list[str] | None = None) -> int:
