@@ -3,6 +3,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "params/Parameters.h"
+
 namespace subgen::plugin
 {
 // The SUB-GEN audio processor. Phase 3 skeleton: stereo in/out, passes audio through unchanged, no latency.
@@ -37,7 +39,13 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    // the parameter registry (PARAMETERS.md)
+    juce::AudioProcessorValueTreeState& parameters() { return state; }
+    const juce::AudioProcessorValueTreeState& parameters() const { return state; }
+
 private:
+    juce::AudioProcessorValueTreeState state;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SubGenProcessor)
 };
 } // namespace subgen::plugin

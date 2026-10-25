@@ -56,4 +56,7 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME check_docs
         COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/check_docs.py" --docs "${PROJECT_SOURCE_DIR}/docs")
+    # src/params/ParamSpecs.inc must match PARAMETERS.md (tools/gen_params.py regenerates it)
+    add_test(NAME gen_params_check COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/gen_params.py" --check)
+    add_test(NAME tools_tests COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${PROJECT_SOURCE_DIR}/tools/tests")
 endif()
