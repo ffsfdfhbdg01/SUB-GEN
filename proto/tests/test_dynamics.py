@@ -211,6 +211,14 @@ class TestLimiter(unittest.TestCase):
         y = dynamics.limiter(x, FS, ceiling_db=-1.0, lookahead_ms=0.0, release_ms=100.0, live=True)
         self.assertTrue(np.isfinite(util.thd_db(y[FS:2 * FS], FS, 40.0)))
 
+    def test_limiter_can_return_its_gain(self):
+        # the C++ golden data compare the gain trajectory: y is the delayed input times that gain
+        x = signals.sine(40.0, FS, 0.3, level_db=5.0)
+        y, gain = dynamics.limiter(x, FS, ceiling_db=-1.0, lookahead_ms=5.0, release_ms=100.0, return_gain=True)
+        d = int(round(0.005 * FS))
+        np.testing.assert_array_equal(y, np.concatenate([np.zeros(d), x[:-d]]) * gain)
+        np.testing.assert_array_equal(y, dynamics.limiter(x, FS, ceiling_db=-1.0, lookahead_ms=5.0, release_ms=100.0))
+
     def test_live_limiter_is_tanh_with_adaa(self):
         c = 10 ** (-1.0 / 20.0)
         x = signals.sine(40.0, FS, 0.5, level_db=-30.0)  # small: tanh(x/c) c ~ x

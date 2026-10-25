@@ -345,9 +345,32 @@ def export_dynamics() -> dict[str, np.ndarray]:
     return out
 
 
+LIMITER_STEP = 32
+
+
+def limiter_input(fs: float = 48000) -> np.ndarray:
+    """Task 16: a 40 Hz sine 6 dB over the -1 dBFS ceiling for 0.2 s, then 0.2 s at -6 dBFS (the release).
+    tests/unit/test_limiter.cpp builds the same."""
+    return np.concatenate([signals.sine(40.0, fs, 0.2, level_db=5.0), signals.sine(40.0, fs, 0.2, level_db=-6.0)])
+
+
+def export_limiter() -> dict[str, np.ndarray]:
+    """Task 16: dynamics.limiter (ceiling -1 dBFS, release 100 ms), every LIMITER_STEP-th sample: the output of Live
+    (tanh with ADAA) and the output and gain of Mix (2 ms) and Print (5 ms)."""
+    fs = 48000
+    x = limiter_input(fs)
+    s = slice(None, None, LIMITER_STEP)
+    out = {"y/live": dynamics.limiter(x, fs, ceiling_db=-1.0, lookahead_ms=0.0, release_ms=100.0, live=True)[s]}
+    for name, ms in (("mix", 2.0), ("print", 5.0)):
+        y, gain = dynamics.limiter(x, fs, ceiling_db=-1.0, lookahead_ms=ms, release_ms=100.0, return_gain=True)
+        out[f"y/{name}"] = y[s]
+        out[f"gain/{name}"] = gain[s]
+    return out
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
            "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic,
-           "drive": export_drive, "dynamics": export_dynamics}
+           "drive": export_drive, "dynamics": export_dynamics, "limiter": export_limiter}
 
 
 def main(argv: list[str] | None = None) -> int:

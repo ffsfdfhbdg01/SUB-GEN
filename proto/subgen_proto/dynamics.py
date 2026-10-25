@@ -139,11 +139,13 @@ def gate(x, fs: float, *, thresh_db: float, range_db: float, hold_ms: float, rel
     return x * 10.0 ** (gain / 20.0), mask
 
 
-def limiter(x, fs: float, *, ceiling_db: float, lookahead_ms: float, release_ms: float, live: bool = False) -> np.ndarray:
+def limiter(x, fs: float, *, ceiling_db: float, lookahead_ms: float, release_ms: float, live: bool = False,
+            return_gain: bool = False):
     """Live: c tanh(x/c) with 1st-order ADAA (|y| < c). Otherwise: required gain r = min(1, c/|x|), held (min) over
     the D + 1 = round(lookahead fs) + 1 most recent samples, released with a one-pole, smoothed by a positive Hann
     FIR of length D + 1 and applied to x delayed by exactly D samples. Every tap of the smoothing sees a held value
-    that already covers the delayed sample, so |y| <= c."""
+    that already covers the delayed sample, so |y| <= c. return_gain=True returns (y, gain) in the lookahead modes
+    (the C++ golden data)."""
     x = np.asarray(x, dtype=np.float64)
     c = 10.0 ** (ceiling_db / 20.0)
     if live:
@@ -163,4 +165,4 @@ def limiter(x, fs: float, *, ceiling_db: float, lookahead_ms: float, release_ms:
     w = np.hanning(d + 3)[1:-1]
     gain = sps.lfilter(w / np.sum(w), [1.0], e) if d > 0 else e
     delayed = np.concatenate([np.zeros(min(d, len(x))), x[:max(len(x) - d, 0)]]) if d > 0 else x
-    return delayed * gain
+    return (delayed * gain, gain) if return_gain else delayed * gain
