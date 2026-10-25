@@ -22,6 +22,15 @@ class HilbertDesign:
     max_err_deg: float   # max |phase(B) - phase(A) - 90| over the design band
 
 
+# The plug-in's pair (SPEC §7.7, P2-07): design(4) over 12-600 Hz frozen at full precision, so the golden data and the
+# C++ constants do not move with SciPy's optimiser (tests/test_phase.py checks that design(4) still lands on it).
+PAIR = HilbertDesign(
+    poles_a=np.array([25.429860045190566, 190.3669971504519, 747.761428356882, 3234.885596037998]),
+    poles_b=np.array([87.86851909071692, 380.12739889035265, 1493.1401503758816, 11177.592257549077]),
+    max_err_deg=0.13326883202998374,
+)
+
+
 def phase_difference_deg(design: HilbertDesign, f_hz) -> np.ndarray:
     """phase(B) - phase(A) of the analogue prototype in degrees (90 = ideal)."""
     w = 2.0 * np.pi * np.asarray(f_hz, dtype=float)[:, None]

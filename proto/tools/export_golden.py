@@ -20,7 +20,8 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import activity, divide, drive, dynamics, envelope, harmonic, render, signals, svf, track, trigger, util
+from subgen_proto import (activity, divide, drive, dynamics, envelope, harmonic, hilbert, render, signals, svf, track,
+                          trigger, util)
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -368,9 +369,17 @@ def export_limiter() -> dict[str, np.ndarray]:
     return out
 
 
+def export_phase() -> dict[str, np.ndarray]:
+    """Task 20: the impulse responses (48 kHz, 4096 samples) of the Hilbert pair's chains A and B (hilbert.PAIR)."""
+    fs = 48000
+    x = np.zeros(4096)
+    x[0] = 1.0
+    return {"a": hilbert.allpass_chain(x, hilbert.PAIR.poles_a, fs), "b": hilbert.allpass_chain(x, hilbert.PAIR.poles_b, fs)}
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
            "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic,
-           "drive": export_drive, "dynamics": export_dynamics, "limiter": export_limiter}
+           "drive": export_drive, "dynamics": export_dynamics, "limiter": export_limiter, "phase": export_phase}
 
 
 def main(argv: list[str] | None = None) -> int:

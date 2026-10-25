@@ -42,6 +42,14 @@ class TestHilbertPair(unittest.TestCase):
         self.assertEqual(len(d.poles_b), n)
         self.assertTrue(np.all(d.poles_a > 0) and np.all(d.poles_b > 0))
 
+    def test_frozen_pair_is_the_4_section_design(self):
+        # the plug-in's pair (SPEC §7.7) is frozen at full precision for the golden data and the C++ constants
+        d = hilbert.design(4, F_LO, F_HI)
+        np.testing.assert_allclose(d.poles_a, hilbert.PAIR.poles_a, rtol=1e-9)
+        np.testing.assert_allclose(d.poles_b, hilbert.PAIR.poles_b, rtol=1e-9)
+        self.assertAlmostEqual(d.max_err_deg, hilbert.PAIR.max_err_deg, delta=1e-9)
+        self.assertLessEqual(hilbert.PAIR.max_err_deg, 0.2)  # T-FILT-05
+
     def test_error_falls_with_the_order(self):
         errs = [hilbert.design(n, F_LO, F_HI).max_err_deg for n in (2, 3, 4)]
         self.assertGreater(errs[0], errs[1])
