@@ -231,7 +231,7 @@ private:
     divide_detail::Core coreB;
     Signs signs;
     Smoother smooth1, smooth2;
-    double fHeld = 0.0;
+    double fHeld = 0.0;     // the tracking low-pass: the last estimate (0: none yet in this note, f_init)
     double fConstant = 0.0; // the estimate the Constant window uses (0: none yet in this note)
 
     std::int64_t n = 0; // samples processed on the current axis

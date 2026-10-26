@@ -42,6 +42,23 @@ LowPassDesign lowPassOf(const SubFilterParams& p, double fs)
     return d;
 }
 
+double subFiltersGroupDelayMs(const SubFilterParams& p, bool linearPhase, double fs, double fHz)
+{
+    const LowPassDesign lp = lowPassOf(p, fs);
+    const int hpOrder = p.lfeMode ? kLfeHpOrder : orderOf(p.hpSlope, lp.family);
+    const double hpHz = p.lfeMode ? finiteOr(p.lfeHpHz, 20.0, 5.0, 0.45 * fs) : finiteOr(p.hpHz, 22.0, 5.0, 0.45 * fs);
+    dsp::FilterCascade hp;
+    hp.set(dsp::designFilter(lp.family, dsp::FilterKind::HighPass, hpOrder, hpHz, fs));
+    double seconds = hp.groupDelaySeconds(fHz, fs);
+    if (!linearPhase)
+    {
+        dsp::FilterCascade low;
+        low.set(dsp::designFilter(lp.family, dsp::FilterKind::LowPass, lp.order, lp.fcHz, fs));
+        seconds += low.groupDelaySeconds(fHz, fs);
+    }
+    return 1000.0 * seconds;
+}
+
 void SubFilters::Slot::follow(double hpHz, double lpHz, double fs)
 {
     if (hpHz != madeHp)

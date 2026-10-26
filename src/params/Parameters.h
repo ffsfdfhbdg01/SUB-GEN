@@ -89,8 +89,15 @@ constexpr int choiceIndex(ParamId id, std::string_view label)
     }
 }
 
-// dB to a linear gain; with offAtMin, -60 dB (the registry's "Off") is exactly 0.
-inline double gainFromDb(double db, bool offAtMin) { return offAtMin && db <= -60.0 ? 0.0 : std::pow(10.0, db / 20.0); }
+// dB to a linear gain; with offAtMin, -60 dB (the registry's "Off") is exactly 0, and within 1e-4 dB of 0 is exactly
+// 1: the host keeps a parameter normalised, so a 0 dB default on an asymmetric range (-60...+6 dB) reads ~2e-6 dB, and
+// Init must keep the dry bit-exact (PARAMETERS §3).
+inline double gainFromDb(double db, bool offAtMin)
+{
+    if (offAtMin && db <= -60.0)
+        return 0.0;
+    return std::abs(db) < 1e-4 ? 1.0 : std::pow(10.0, db / 20.0);
+}
 
 // The plain values of every parameter in ParamId order, read once per block.
 struct ParamSnapshot

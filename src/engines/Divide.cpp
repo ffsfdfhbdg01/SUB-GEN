@@ -275,7 +275,7 @@ void Divide::reset()
     signs = Signs{};
     smooth1 = Smoother{};
     smooth2 = Smoother{};
-    fHeld = fInit;
+    fHeld = 0.0; // none yet: the tracking low-pass uses the control's f_init
     fConstant = 0.0;
     n = 0;
     lastFEst = 0.0;
@@ -566,14 +566,16 @@ double Divide::processSample(double source)
         return 0.0;
     }
 
-    // tracking low-pass: f_init from every reset until the note's first estimate, then the last estimate
+    // tracking low-pass: f_init from every reset until the note's first estimate, then the last estimate (f_init is
+    // the current control's: a control given after the reset counts)
     if (coreA.resetNow)
-        fHeld = coreA.fEst() > 0.0 ? coreA.fEst() : fInit;
+        fHeld = coreA.fEst(); // 0 until the note's first estimate
     else if (coreA.fEst() > 0.0)
         fHeld = coreA.fEst();
+    const double fTrack = fHeld > 0.0 ? fHeld : fInit;
     const double shift = std::pow(2.0, 5.0 * control.shape);
-    const double cutoff1 = std::min(0.87 * fHeld * 1.0 * shift, 0.45 * fs);
-    const double cutoff2 = std::min(0.87 * fHeld * 0.5 * shift, 0.45 * fs);
+    const double cutoff1 = std::min(0.87 * fTrack * 1.0 * shift, 0.45 * fs);
+    const double cutoff2 = std::min(0.87 * fTrack * 0.5 * shift, 0.45 * fs);
     const double sm1 = smooth(smooth1, y1, cutoff1);
     const double sm2 = smooth(smooth2, y2, cutoff2);
 

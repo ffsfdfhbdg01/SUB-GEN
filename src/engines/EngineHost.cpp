@@ -38,6 +38,21 @@ void EngineHost::prepare(double sampleRate, int block, Quality quality)
     active = target;
 }
 
+void EngineHost::reset()
+{
+    for (const EngineType t : {EngineType::Divide, EngineType::Track, EngineType::Trigger, EngineType::Harmonic,
+                               EngineType::Hybrid})
+        engineFor(t).reset();
+    std::fill(sourceRing.begin(), sourceRing.end(), 0.0);
+    std::fill(keyRing.begin(), keyRing.end(), 0.0);
+    ringPosition = 0;
+    ringFill = 0;
+    fadePosition = 0;
+    switching = false;
+    active = target;
+    engineFor(active).setControl(control); // a pending switch: the engine it activates has not had the control yet
+}
+
 void EngineHost::setControl(const EngineControl& c)
 {
     control = c;

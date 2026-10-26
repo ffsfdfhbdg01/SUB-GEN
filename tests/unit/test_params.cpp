@@ -93,6 +93,23 @@ TEST_CASE("quality, filt_phase and align_ms are not automatable", "[params]")
     }
 }
 
+TEST_CASE("a 0 dB default read back from the host is exactly unity", "[params]")
+{
+    // the APVTS keeps floats normalised: 0 dB on -60...+6 dB comes back ~2e-6 dB off, which must still be 1.0 (Init
+    // keeps the dry bit-exact, PARAMETERS §3)
+    plugin::SubGenProcessor processor;
+    ParamSnapshot snap;
+    ParamView(processor.parameters()).read(snap);
+    for (const auto id : {ParamId::dry_level, ParamId::out_trim, ParamId::route_front, ParamId::lfe_trim, ParamId::feed_front,
+                          ParamId::sub1_level})
+    {
+        INFO(spec(id).id << " reads " << snap[id] << " dB");
+        CHECK(snap.gain(id) == 1.0);
+    }
+    CHECK(gainFromDb(5e-5, false) == 1.0);
+    CHECK(gainFromDb(2e-4, false) > 1.0);
+}
+
 TEST_CASE("Off at -60 dB maps to gain 0.0 exactly", "[params]")
 {
     CHECK(gainFromDb(-60.0, true) == 0.0);

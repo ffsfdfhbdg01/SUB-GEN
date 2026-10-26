@@ -32,6 +32,7 @@ class EngineHost
 {
 public:
     void prepare(double fs, int maxBlock, Quality quality);
+    void reset(); // every engine's state, the warm-up ring and a crossfade under way
     void setEngine(EngineType type) { target = type; }
     void setControl(const EngineControl& control);
     void process(std::span<const double> source, std::span<const double> key, std::span<double> out);

@@ -49,10 +49,13 @@ public:
     void setParams(const SubChainParams& params);
     void process(std::span<double> block);
     int latencySamples() const;
+    int oversamplingLatencySamples() const { return dynamics[active].drive.latencySamples(); } // L_os
     bool nanEvent() const { return nanCaught; } // the last process() call caught a NaN or Inf
     std::span<const double> afterChainA() const { return {chainA.data(), lastBlock}; }
     // The host renders offline (isNonRealtime): Linear Phase waits for each kernel.
     void setNonRealtime(bool offline) { filters.setNonRealtime(offline); }
+    // Off the audio thread (tests, offline rendering): waits for the Linear Phase kernel asked for.
+    bool waitForLinearPhase(int timeoutMs) const { return filters.waitForLinearPhase(timeoutMs); }
 
 private:
     struct Dynamics

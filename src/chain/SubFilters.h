@@ -37,6 +37,10 @@ struct LowPassDesign
 
 LowPassDesign lowPassOf(const SubFilterParams& params, double fs);
 
+// The group delay (ms) at fHz of the filters a parameter set asks for, designed afresh (any thread): the high-pass and,
+// unless Linear Phase sounds (its kernel's delay is latency), the low-pass — SPEC §9.2's estimate.
+double subFiltersGroupDelayMs(const SubFilterParams& params, bool linearPhase, double fs, double fHz);
+
 // The sub path's high- and low-pass (SPEC §7.6): minimum-phase cascades (dsp::designFilter) of the family filt_type,
 // the high-pass first; Bessel stops at 48 dB/oct. LFE mode (SPEC_IO_UI §4) replaces them with a 24 dB/oct high-pass
 // at lfe_hp_freq and one low-pass at lfe_lp_freq / lfe_lp_slope, not cascaded with sub_lp. Cutoffs move in log over

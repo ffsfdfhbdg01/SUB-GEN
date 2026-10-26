@@ -241,3 +241,82 @@ TEST_CASE("the host does not allocate, splits blocks larger than prepared and do
     CHECK(run(64) == a);
     CHECK(run(1000) == a); // larger than the prepared 64
 }
+
+TEST_CASE("reset() clears the engines: silence after a note stays silent", "[engine-host]")
+{
+    for (const auto type : {EngineType::Divide, EngineType::Track, EngineType::Trigger, EngineType::Harmonic, EngineType::Hybrid})
+    {
+        INFO("engine " << static_cast<int>(type));
+        EngineHost host;
+        host.prepare(48000.0, 64, Quality::Mix);
+        host.setEngine(type);
+        const auto note = sig::sine(100.0, 48000.0, 0.5, -12.0);
+        std::vector<double> y(note.size());
+        host.process(note, {}, y);
+        host.reset();
+        std::vector<double> silence(4800, 0.0), z(4800, 1.0);
+        host.process(silence, {}, z);
+        CHECK(std::all_of(z.begin(), z.end(), [](double v) { return v == 0.0; }));
+    }
+}
+
+TEST_CASE("reset() hands the engine it activates the current control", "[engine-host]")
+{
+    // A reset while a switch is pending activates the new engine at once, with the control the host holds.
+    EngineControl c;
+    c.rangeLoHz = 25.0;
+    c.rangeHiHz = 100.0;
+    c.confGate = 0.3;
+    c.detThreshDb = -50.0;
+    const auto note = sig::bass808(48000.0);
+    for (const auto type : {EngineType::Track, EngineType::Trigger, EngineType::Harmonic, EngineType::Hybrid})
+    {
+        INFO("engine " << static_cast<int>(type));
+        EngineHost once, twice;
+        for (auto* h : {&once, &twice})
+        {
+            h->prepare(48000.0, 64, Quality::Mix);
+            h->setEngine(type);
+            h->setControl(c);
+            h->reset();
+        }
+        twice.setControl(c);
+        std::vector<double> a(note.size()), b(note.size());
+        once.process(note, {}, a);
+        twice.process(note, {}, b);
+        CHECK(a == b);
+    }
+}
+
+TEST_CASE("a control given after prepare holds from the first note, as after a reset", "[engine-host]")
+{
+    // Before a note's first estimate DIVIDE's tracking low-pass sits at f_init (range_hi, or from base_freq in Fixed):
+    // the current control's, whether it came before or after the last reset.
+    EngineControl range;
+    range.rangeLoHz = 25.0;
+    range.rangeHiHz = 100.0;
+    EngineControl fixed;
+    fixed.baseFixed = true;
+    fixed.baseFreqHz = 40.0;
+    std::vector<double> x(4800, 0.0); // a switch to another engine completes on silence first
+    const auto note = sig::bass808(48000.0);
+    x.insert(x.end(), note.begin(), note.end());
+    for (const auto type : {EngineType::Divide, EngineType::Track, EngineType::Trigger, EngineType::Harmonic, EngineType::Hybrid})
+        for (const auto& control : {range, fixed})
+        {
+            INFO("engine " << static_cast<int>(type) << ", base fixed " << control.baseFixed);
+            EngineHost fresh, reset;
+            for (auto* h : {&fresh, &reset})
+            {
+                h->prepare(48000.0, 64, Quality::Mix);
+                h->setEngine(type);
+                h->setControl(control);
+            }
+            reset.reset();
+            reset.setControl(control); // as the processor does after its resets
+            std::vector<double> a(x.size()), b(x.size());
+            fresh.process(x, {}, a);
+            reset.process(x, {}, b);
+            CHECK(a == b);
+        }
+}

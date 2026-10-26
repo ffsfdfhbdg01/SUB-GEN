@@ -317,3 +317,22 @@ TEST_CASE("SubFilters do not allocate and do not depend on the block size", "[su
     CHECK(go(32) == a); // both divide 9600
     CHECK(go(320) == a);
 }
+
+TEST_CASE("subFiltersGroupDelayMs equals the filters' displayed group delay", "[subfilters]")
+{
+    SubFilterParams lfe;
+    lfe.lfeMode = true;
+    for (const auto& p : {SubFilterParams{}, lfe, normal(FilterFamily::Bessel, 15.0, 48, 80.0, 48),
+                          normal(FilterFamily::LinkwitzRiley, 30.0, 96, 300.0, 12)})
+        for (const double f : {30.0, 40.0, 80.0})
+        {
+            SubFilters filters;
+            filters.prepare(kFs, 512, Quality::Mix);
+            filters.setParams(p);
+            CHECK(std::abs(subFiltersGroupDelayMs(p, false, kFs, f) - filters.groupDelayMs(f)) <= 1e-12);
+        }
+    // Linear Phase sounding: the kernel's delay is latency, the high-pass alone counts
+    dsp::FilterCascade hp;
+    hp.set(dsp::designFilter(FilterFamily::Butterworth, FilterKind::HighPass, 4, 22.0, kFs));
+    CHECK(std::abs(subFiltersGroupDelayMs(SubFilterParams{}, true, kFs, 40.0) - 1000.0 * hp.groupDelaySeconds(40.0, kFs)) <= 1e-12);
+}
