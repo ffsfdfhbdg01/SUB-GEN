@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "dsp/Fft.h"
+#include "dsp/FilterCascade.h"
+#include "dsp/FilterDesign.h"
 
 namespace subgen::analysis
 {
@@ -146,5 +148,28 @@ AlignResult autoAlign(std::span<const double> dryBand, std::span<const double> s
     r.confidenceDb = score[pick] - median(score);
     r.clearOptimum = r.confidenceDb >= kClearDb;
     return r;
+}
+std::vector<double> zeroPhaseBand(std::span<const double> x, double fs, double loHz, double hiHz)
+{
+    std::vector<double> y(x.size());
+    for (size_t i = 0; i < x.size(); ++i)
+        y[i] = std::isfinite(x[i]) ? x[i] : 0.0;
+    if (!std::isfinite(fs) || fs <= 0.0 || y.empty())
+        return y;
+    const double top = 0.45 * fs;
+    const double lo = std::clamp(std::isfinite(loHz) ? loHz : 15.0, 1.0, 0.5 * top);
+    const double hi = std::clamp(std::isfinite(hiHz) ? hiHz : 120.0, 2.0 * lo, top);
+    dsp::FilterCascade hp, lp;
+    hp.set(dsp::designFilter(dsp::FilterFamily::Butterworth, dsp::FilterKind::HighPass, 4, lo, fs));
+    lp.set(dsp::designFilter(dsp::FilterFamily::Butterworth, dsp::FilterKind::LowPass, 4, hi, fs));
+    for (int pass = 0; pass < 2; ++pass) // forward, then backward: the phases cancel
+    {
+        hp.reset();
+        lp.reset();
+        for (auto& v : y)
+            v = lp.process(hp.process(v));
+        std::reverse(y.begin(), y.end());
+    }
+    return y;
 }
 } // namespace subgen::analysis

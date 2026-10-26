@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <string>
 #include <thread>
@@ -220,4 +221,54 @@ TEST_CASE("the capture buffer keeps the last seconds, lock-free for the audio th
     stop.store(true);
     writer.join();
     CHECK(contiguous);
+}
+
+TEST_CASE("zeroPhaseBand keeps an in-band tone's phase and removes out-of-band tones", "[autoalign]")
+{
+    constexpr double fs = 48000.0;
+    auto tone = [&](double f) {
+        std::vector<double> x(96000);
+        for (size_t i = 0; i < x.size(); ++i)
+            x[i] = 0.5 * std::sin(2.0 * std::numbers::pi * f * static_cast<double>(i) / fs);
+        return x;
+    };
+    for (const double f : {30.0, 40.0, 60.0, 100.0}) // in [15, 120] Hz
+    {
+        INFO(f << " Hz");
+        const auto x = tone(f);
+        const auto y = zeroPhaseBand(x, fs, 15.0, 120.0);
+        REQUIRE(y.size() == x.size());
+        // y = g x away from the ends, g = |H(f)|^2 real: no phase shift (a minimum-phase band turns 100 Hz by -121 deg)
+        double xy = 0.0, xx = 0.0;
+        for (size_t i = 24000; i < 72000; ++i)
+        {
+            xy += x[i] * y[i];
+            xx += x[i] * x[i];
+        }
+        const double g = xy / xx;
+        double residual = 0.0;
+        for (size_t i = 24000; i < 72000; ++i)
+            residual += (y[i] - g * x[i]) * (y[i] - g * x[i]);
+        CHECK(10.0 * std::log10(residual / (g * g * xx)) < -60.0);
+        CHECK(g > 0.75);
+        CHECK(g < 1.0 + 1e-9);
+    }
+    for (const double f : {3.0, 600.0})
+    {
+        INFO(f << " Hz");
+        const auto x = tone(f);
+        const auto y = zeroPhaseBand(x, fs, 15.0, 120.0);
+        double yy = 0.0, xx = 0.0;
+        for (size_t i = 24000; i < 72000; ++i)
+        {
+            yy += y[i] * y[i];
+            xx += x[i] * x[i];
+        }
+        CHECK(10.0 * std::log10(yy / xx) < -60.0);
+    }
+    // a NaN in the capture counts as 0, as in autoAlign
+    auto x = tone(40.0);
+    x[100] = std::numeric_limits<double>::quiet_NaN();
+    for (const double v : zeroPhaseBand(x, fs, 15.0, 120.0))
+        REQUIRE(std::isfinite(v));
 }

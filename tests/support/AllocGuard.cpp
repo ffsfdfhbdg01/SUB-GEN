@@ -13,6 +13,14 @@
 namespace
 {
 thread_local std::size_t newCalls = 0;
+thread_local std::size_t freeCalls = 0; // non-null operator delete calls
+
+void release(void* p) noexcept
+{
+    if (p != nullptr)
+        ++freeCalls;
+    std::free(p);
+}
 
 void* allocate(std::size_t size) noexcept
 {
@@ -34,6 +42,8 @@ void* allocateAligned(std::size_t size, std::align_val_t alignment) noexcept
 
 void freeAligned(void* p) noexcept
 {
+    if (p != nullptr)
+        ++freeCalls;
 #if defined(_WIN32)
     _aligned_free(p);
 #else
@@ -52,13 +62,19 @@ void* orThrow(void* p)
 namespace subgen::test
 {
 AllocGuard::AllocGuard()
-    : start(newCalls)
+    : start(newCalls),
+      startFreed(freeCalls)
 {
 }
 
 std::size_t AllocGuard::count() const
 {
     return newCalls - start;
+}
+
+std::ptrdiff_t AllocGuard::live() const
+{
+    return static_cast<std::ptrdiff_t>(newCalls - start) - static_cast<std::ptrdiff_t>(freeCalls - startFreed);
 }
 } // namespace subgen::test
 
@@ -97,27 +113,27 @@ void* operator new[](std::size_t size, std::align_val_t alignment, const std::no
 
 void operator delete(void* p) noexcept
 {
-    std::free(p);
+    release(p);
 }
 void operator delete[](void* p) noexcept
 {
-    std::free(p);
+    release(p);
 }
 void operator delete(void* p, std::size_t) noexcept
 {
-    std::free(p);
+    release(p);
 }
 void operator delete[](void* p, std::size_t) noexcept
 {
-    std::free(p);
+    release(p);
 }
 void operator delete(void* p, const std::nothrow_t&) noexcept
 {
-    std::free(p);
+    release(p);
 }
 void operator delete[](void* p, const std::nothrow_t&) noexcept
 {
-    std::free(p);
+    release(p);
 }
 void operator delete(void* p, std::align_val_t) noexcept
 {

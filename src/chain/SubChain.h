@@ -50,6 +50,7 @@ public:
     void process(std::span<double> block);
     int latencySamples() const;
     int oversamplingLatencySamples() const { return dynamics[active].drive.latencySamples(); } // L_os
+    int latencyAfterChainA() const { return limiter.latencySamples(); } // chain A's sub reaches the output this late
     bool nanEvent() const { return nanCaught; } // the last process() call caught a NaN or Inf
     std::span<const double> afterChainA() const { return {chainA.data(), lastBlock}; }
     // The host renders offline (isNonRealtime): Linear Phase waits for each kernel.

@@ -8,6 +8,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "analysis/AutoAlign.h"
+#include "analysis/CaptureBuffer.h"
 #include "chain/SubChain.h"
 #include "core/Quality.h"
 #include "dsp/DelayLine.h"
@@ -17,6 +19,7 @@
 #include "engines/SourceBand.h"
 #include "params/Parameters.h"
 #include "plugin/Latency.h"
+#include "plugin/StateIO.h"
 #include "plugin/Warnings.h"
 #include "routing/ChannelMap.h"
 #include "routing/Correlation.h"
@@ -33,7 +36,8 @@ namespace subgen::plugin
 // bypass parameter crossfades over 10 ms to the delayed dry. A change of quality, filt_phase or align_ms mutes the output
 // over 20 ms; align_ms and filt_phase then switch on the audio thread, quality is re-prepared by the message thread
 // (timer) with processing suspended; the output comes back over 20 ms and the message thread reports the latency
-// (W-07). States reset after 5 s of digital silence. No allocation, lock or wait in processBlock.
+// (W-07). States reset after 5 s of digital silence. No allocation, lock or wait in processBlock. The host's state is
+// versioned, compressed XML (StateIO); Auto Align analyses the last seconds of S1 and the sub on a background thread.
 class SubGenProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
@@ -88,11 +92,30 @@ public:
     // Off the audio thread (tests, offline rendering): waits for the Linear Phase kernels asked for.
     bool waitForLinearPhase(int timeoutMs) const;
 
+    // The state outside the parameters (PARAMETERS §6): UI, the last Auto Align result, the preset. Any thread.
+    ExtraState extraState() const;
+    void setExtraState(const ExtraState& newExtra);
+    // Auto Align (SPEC §8.B; message thread): analyses the capture on a background thread. The message thread then
+    // (timer, applyPendingConfiguration) writes the result to <ALIGN/> and, with a clear optimum and align_lock off,
+    // to sub_pol and sub_rot. A request while one runs is ignored.
+    void requestAutoAlign();
+    bool waitForAutoAlign(int timeoutMs) const; // off the audio thread: the analysis asked for has finished
+    analysis::AlignResult lastAutoAlign() const;
+
 private:
     static constexpr int kSubBlock = 64;
     static constexpr int kMaxChannels = 32;
 
+    // one Auto Align analysis, shared with the background thread, which owns no part of the processor
+    struct AlignJob
+    {
+        juce::WaitableEvent finished{true};
+        std::atomic<bool> done{false};
+        analysis::AlignResult result;
+    };
+
     void timerCallback() override { applyPendingConfiguration(); }
+    void applyAutoAlignResult(const analysis::AlignResult& r); // message thread
     void configure(bool fadeIn); // prepares every stage for the current parameters (allocates)
     template <typename Sample>
     void process(juce::AudioBuffer<Sample>& buffer);
@@ -162,6 +185,17 @@ private:
     dsp::RmsFollower lfeRms;
     dsp::RmsFollower sourceRms;
     std::atomic<double> fSub1{0.0};
+
+    // Auto Align: S1 delayed to meet chain A's sub where the two sum at the output, and that sub
+    analysis::CaptureBuffer capture;
+    dsp::DelayLine alignDelay;
+    std::vector<double> alignDry, alignSub;
+    std::unique_ptr<juce::ThreadPool> alignPool; // made by the first request
+    std::shared_ptr<AlignJob> alignJob;          // the last request's (message thread)
+
+    mutable juce::CriticalSection extraLock;
+    ExtraState extra;
+    analysis::AlignResult alignResult;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SubGenProcessor)
 };

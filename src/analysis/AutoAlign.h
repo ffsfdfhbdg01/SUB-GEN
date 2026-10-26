@@ -2,6 +2,7 @@
 #pragma once
 
 #include <span>
+#include <vector>
 
 namespace subgen::analysis
 {
@@ -28,4 +29,10 @@ struct AlignResult
 // Allocates: it runs off the audio thread.
 AlignResult autoAlign(std::span<const double> dryBand, std::span<const double> subAfterA, double fs, double rangeLoHz,
                       double rangeHiHz, AlignObjective objective, double stepDeg = 15.0);
+
+// The capture through [loHz, hiHz] without a phase shift: Butterworth 4th-order high- and low-pass, run forward and
+// backward (|H|^2). The plug-in passes S1 and the sub through it alike, so their phases meet as they do at the output,
+// which the dry reaches unfiltered (a minimum-phase band would turn the dry alone: +64 deg at 25 Hz, -121 at 100 Hz).
+// Non-finite samples count as 0. Allocates: off the audio thread.
+std::vector<double> zeroPhaseBand(std::span<const double> x, double fs, double loHz, double hiHz);
 } // namespace subgen::analysis

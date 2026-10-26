@@ -22,6 +22,8 @@ constexpr double kBypassMs = 10.0;
 constexpr double kSilenceResetSeconds = 5.0;
 constexpr double kMaxAlignMs = 40.0;
 constexpr double kMeterMs = 300.0;
+constexpr double kCaptureSeconds = 8.0;            // SPEC §8.B
+constexpr double kMaxCaptureSamples = 8.0 * 192000.0; // shorter above 192 kHz: about 25 MB at most
 
 double sCurve(double u) { return 0.5 - 0.5 * std::cos(std::numbers::pi * u); }
 
@@ -63,7 +65,12 @@ SubGenProcessor::SubGenProcessor()
         startTimerHz(20); // the message thread's half of a configuration change
 }
 
-SubGenProcessor::~SubGenProcessor() { stopTimer(); }
+SubGenProcessor::~SubGenProcessor()
+{
+    stopTimer();
+    if (alignPool != nullptr)
+        alignPool->removeAllJobs(true, 30000); // a running analysis finishes first
+}
 
 bool SubGenProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const { return layoutUsable(layouts); }
 
@@ -133,6 +140,10 @@ void SubGenProcessor::configure(bool fadeIn)
     outBuffer.setSize(std::max(1, outChannels), chunk);
     for (auto* v : {&streamL, &streamR, &sub0, &sub1, &keyScratch})
         v->assign(kSubBlock, 0.0);
+    capture.prepare(fs, std::min(kCaptureSeconds, kMaxCaptureSamples / fs));
+    alignDelay.prepare(capacity);
+    alignDry.assign(kSubBlock, 0.0);
+    alignSub.assign(kSubBlock, 0.0);
     subCorrelation.prepare(fs);
     frontBand.prepare(fs);
     frontBand.setRange(20.0, 120.0, 24);
@@ -149,6 +160,7 @@ void SubGenProcessor::configure(bool fadeIn)
     appliedLatency = desiredLatency();
     for (auto& d : dryDelay)
         d.setDelay(appliedLatency);
+    alignDelay.setDelay(appliedLatency - chains[0].latencyAfterChainA());
     latencyNow.store(appliedLatency);
     muting = false;
     mute.reset(fs, kMuteMs, fadeIn ? 0.0 : 1.0);
@@ -162,6 +174,7 @@ void SubGenProcessor::reset()
     resetStates();
     for (auto& d : dryDelay)
         d.reset();
+    alignDelay.reset();
 }
 
 void SubGenProcessor::resetStates()
@@ -366,6 +379,15 @@ void SubGenProcessor::processSubBlock(int offset, int n)
     const auto s1 = std::span<double>(sub1).first(len);
     hosts[0].process(sl, key, s0);
     chains[0].process(s0);
+    // the capture for Auto Align (SPEC §8.B): S1, delayed to meet chain A's sub where the two sum at the output, and
+    // that sub; the analysis band-limits both alike, without a phase shift
+    const auto a = chains[0].afterChainA();
+    for (size_t i = 0; i < len; ++i)
+    {
+        alignDry[i] = alignDelay.process(sl[i]);
+        alignSub[i] = i < a.size() ? a[i] : 0.0;
+    }
+    capture.push(std::span<const double>(alignDry).first(len), std::span<const double>(alignSub).first(len));
     if (streams == 2)
     {
         hosts[1].process(sr, key, s1);
@@ -438,6 +460,7 @@ void SubGenProcessor::processSubBlock(int offset, int n)
         {
             for (auto& d : dryDelay)
                 d.setDelay(desired);
+            alignDelay.setDelay(desired - chains[0].latencyAfterChainA());
             appliedLatency = desired;
             latencyNow.store(desired);
             muting = false;
@@ -539,7 +562,87 @@ void SubGenProcessor::applyAutoAlignMs()
 {
     const double ms = std::clamp(std::round(estimatedSubDelayMs() * 10.0) / 10.0, 0.0, kMaxAlignMs);
     if (auto* p = state.getParameter("align_ms"))
+    {
+        p->beginChangeGesture();
         p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(ms)));
+        p->endChangeGesture();
+    }
+}
+
+ExtraState SubGenProcessor::extraState() const
+{
+    const juce::ScopedLock lock(extraLock);
+    return extra;
+}
+
+void SubGenProcessor::setExtraState(const ExtraState& newExtra)
+{
+    const juce::ScopedLock lock(extraLock);
+    extra = newExtra;
+}
+
+void SubGenProcessor::requestAutoAlign()
+{
+    if (alignJob != nullptr && !alignJob->finished.wait(0.0))
+        return; // one analysis at a time
+    std::vector<double> dry, sub;
+    capture.snapshot(dry, sub); // lock-free against the audio thread
+    params::ParamSnapshot s;
+    view.read(s);
+    params::sanitise(s);
+    const double lo = s[ParamId::range_lo], hi = s[ParamId::range_hi], rate = fs;
+    const auto objective =
+        s.index(ParamId::align_obj) == 1 ? analysis::AlignObjective::Headroom : analysis::AlignObjective::Energy;
+    auto job = std::make_shared<AlignJob>();
+    alignJob = job;
+    if (alignPool == nullptr)
+        alignPool = std::make_unique<juce::ThreadPool>(juce::ThreadPoolOptions{}
+                                                           .withThreadName("SUB-GEN Auto Align")
+                                                           .withNumberOfThreads(1)
+                                                           .withDesiredThreadPriority(juce::Thread::Priority::low));
+    alignPool->addJob([job, dry = std::move(dry), sub = std::move(sub), lo, hi, rate, objective] {
+        // SPEC §8.B: S1 through [range_lo/2, range_hi]; the sub through the same band, so their phases stay as at the output
+        job->result = analysis::autoAlign(analysis::zeroPhaseBand(dry, rate, 0.5 * lo, hi),
+                                          analysis::zeroPhaseBand(sub, rate, 0.5 * lo, hi), rate, lo, hi, objective);
+        job->done.store(true, std::memory_order_release);
+        job->finished.signal();
+    });
+}
+
+bool SubGenProcessor::waitForAutoAlign(int timeoutMs) const
+{
+    const auto job = alignJob;
+    return job == nullptr || job->finished.wait(static_cast<double>(timeoutMs));
+}
+
+analysis::AlignResult SubGenProcessor::lastAutoAlign() const
+{
+    const juce::ScopedLock lock(extraLock);
+    return alignResult;
+}
+
+void SubGenProcessor::applyAutoAlignResult(const analysis::AlignResult& r)
+{
+    {
+        const juce::ScopedLock lock(extraLock);
+        alignResult = r;
+        extra.alignPolarity = r.polarity;
+        extra.alignRotationDeg = r.rotationDeg;
+        extra.alignConfidenceDb = r.confidenceDb;
+    }
+    // without a clear optimum (SPEC_BUILD_RELEASE R8: the confidence criterion) or with align_lock the parameters stay
+    if (!r.clearOptimum || state.getRawParameterValue("align_lock")->load() >= 0.5f)
+        return;
+    auto set = [this](const char* id, float plain) {
+        if (auto* p = state.getParameter(id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(p->convertTo0to1(plain));
+            p->endChangeGesture();
+        }
+    };
+    set("sub_pol", r.polarity < 0 ? 1.0f : 0.0f);
+    set("sub_rot", static_cast<float>(r.rotationDeg));
 }
 
 void SubGenProcessor::applyPendingConfiguration()
@@ -556,6 +659,8 @@ void SubGenProcessor::applyPendingConfiguration()
         setLatencySamples(now);
         warningBits.set(Warning::LatencyChanged, true);
     }
+    if (alignJob != nullptr && alignJob->done.exchange(false, std::memory_order_acq_rel))
+        applyAutoAlignResult(alignJob->result);
 }
 
 bool SubGenProcessor::waitForLinearPhase(int timeoutMs) const
@@ -567,9 +672,19 @@ juce::AudioProcessorEditor* SubGenProcessor::createEditor() { return new juce::G
 
 const juce::String SubGenProcessor::getName() const { return JucePlugin_Name; }
 
-void SubGenProcessor::getStateInformation(juce::MemoryBlock&) {}
+void SubGenProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    destData = compressState(*makeState(state, extraState()));
+}
 
-void SubGenProcessor::setStateInformation(const void*, int) {}
+void SubGenProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    // anything unusable sets the defaults (TEST_PLAN T-STATE-04)
+    const auto xml = migrate(decompressState(data, sizeInBytes));
+    ExtraState loaded;
+    applyState(xml.get(), state, loaded);
+    setExtraState(loaded);
+}
 } // namespace subgen::plugin
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new subgen::plugin::SubGenProcessor(); }
