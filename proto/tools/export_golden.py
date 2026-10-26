@@ -20,8 +20,8 @@ from pathlib import Path
 import numpy as np
 from scipy import signal as sps
 
-from subgen_proto import (activity, divide, drive, dynamics, envelope, harmonic, hilbert, render, signals, svf, track,
-                          trigger, util)
+from subgen_proto import (activity, align, band, divide, drive, dynamics, envelope, harmonic, hilbert, render, signals,
+                          svf, track, trigger, util)
 
 MAGIC = b"SGG1"
 EXCERPT = 4096
@@ -377,9 +377,46 @@ def export_phase() -> dict[str, np.ndarray]:
     return {"a": hilbert.allpass_chain(x, hilbert.PAIR.poles_a, fs), "b": hilbert.allpass_chain(x, hilbert.PAIR.poles_b, fs)}
 
 
+AUTOALIGN_FS = 1500  # SIG-18 decimated: the 20-120 Hz band survives and 2048-sample inputs fit the golden budget
+AUTOALIGN_N = 2048
+
+
+def export_autoalign() -> dict[str, np.ndarray]:
+    """Task 24: align.auto_align, band 20-120 Hz, both objectives, each result [pol, rot_deg, gain_db, confidence_db]: on
+    four synthetic scenarios (48 kHz, 2^17 samples: a power of two, so the C++ FFTs equal SciPy's; the C++ test builds
+    the same sines) and on SIG-18 decimated to 1500 Hz (2048 samples): the dry band and the DIVIDE and TRIGGER subs
+    after chain A, as the plug-in captures them (inputs stored)."""
+    out = {}
+    fs = 48000
+    t = np.arange(1 << 17) / fs
+    for phi in (0.0, 60.0, 180.0, -97.5):
+        dry = np.sin(2 * np.pi * 80.0 * t) + 0.5 * np.sin(2 * np.pi * 40.0 * t + np.radians(phi))
+        sub = np.sin(2 * np.pi * 40.0 * t)
+        for obj in ("energy", "headroom"):
+            r = align.auto_align(dry, sub, fs, (20.0, 120.0), objective=obj)
+            out[f"synthetic/{phi:g}/{obj}"] = np.array([r.pol, r.rot_deg, r.gain_db, r.confidence_db])
+    x = signals.kick_plus_808(fs)
+    xb = band.range_filter(x, fs, 30.0, 120.0)
+    res = divide.divide(xb, fs)
+    subs = {"divide": divide.apply_confidence_gate(divide.smooth_sub(res, fs, 1), res.conf, 50.0, fs, res.provisional,
+                                                    divide.GATE_CONFIRM, divide.confirmations(res.conf, res.provisional, 50.0)),
+            "trigger": trigger.render(xb, fs)}
+    down = lambda v: sps.resample_poly(v, 1, fs // AUTOALIGN_FS)[:AUTOALIGN_N]
+    dry = down(band.range_filter(x, fs, 15.0, 120.0))  # S1 through [range_lo/2, range_hi] (P2-07)
+    out["sig18/dry"] = dry
+    for name, sub in subs.items():
+        sub_a = down(hilbert.allpass_chain(sub, hilbert.PAIR.poles_a, fs))
+        out[f"sig18/{name}"] = sub_a
+        for obj in ("energy", "headroom"):
+            r = align.auto_align(dry, sub_a, AUTOALIGN_FS, (20.0, 120.0), objective=obj)
+            out[f"sig18/{name}/{obj}"] = np.array([r.pol, r.rot_deg, r.gain_db, r.confidence_db])
+    return out
+
+
 EXPORTS = {"signals": export_signals, "filters": export_filters, "envelope": export_envelope, "notes": export_notes,
            "divide": export_divide, "pitch": export_pitch, "trigger": export_trigger, "harmonic": export_harmonic,
-           "drive": export_drive, "dynamics": export_dynamics, "limiter": export_limiter, "phase": export_phase}
+           "drive": export_drive, "dynamics": export_dynamics, "limiter": export_limiter, "phase": export_phase,
+           "autoalign": export_autoalign}
 
 
 def main(argv: list[str] | None = None) -> int:
