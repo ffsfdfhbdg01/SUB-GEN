@@ -53,7 +53,8 @@ public:
     void prepare(double fs, int maxBlock, const ChannelMap& in);
     void reset();
     void setParams(const SourceParams& params);
-    // in: the block buffer's channels, addressed through the map's buffer indices; key: keyCh channels or nullptr
+    // in: the block buffer's channels, addressed through the map's buffer indices; key: keyCh channels or nullptr. Every
+    // channel of in and key holds n samples (the sidechain is part of the same block buffer).
     void process(const double* const* in, int n, const double* const* key, int keyCh, std::span<double> sL,
                  std::span<double> sR);
     int numStreams() const;
