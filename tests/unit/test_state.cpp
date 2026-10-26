@@ -292,6 +292,42 @@ TEST_CASE("deeply nested or oversized XML is refused before parsing", "[state]")
     CHECK(sameExtra(p->extraState(), plugin::ExtraState{}));
 }
 
+TEST_CASE("XML built to slip past the nesting check is refused: comments, CDATA, a quote in a closing tag", "[state]")
+{
+    // JUCE's parser reads a closing tag to the first '>', CDATA to "]]>" and skips comments and processing
+    // instructions anywhere; a pre-scan that reads any of them differently can be steered to undercount the nesting,
+    // and 90000 levels (under the 1 MB cap) overrun the stack. The scan accepts only what a state holds.
+    auto zipped = [](const juce::String& text) {
+        juce::MemoryBlock block;
+        {
+            juce::MemoryOutputStream out(block, false);
+            juce::GZIPCompressorOutputStream zip(out, 9);
+            zip.write(text.toRawUTF8(), text.getNumBytesAsUTF8());
+        }
+        return block;
+    };
+    auto refused = [&](const juce::String& text) {
+        const auto blob = zipped(text);
+        return plugin::decompressState(blob.getData(), static_cast<int>(blob.getSize())) == nullptr;
+    };
+    constexpr int n = 90000;
+    const auto open = juce::String::repeatedString("<a>", n), close = juce::String::repeatedString("</a>", n);
+    const juce::String root = "<SUBGEN stateVersion=\"1\">";
+    CHECK(refused(root + "<![CDATA[" + close + "]]>" + open + close + "</SUBGEN>")); // closings hidden as text
+    CHECK(refused(root + "<b></x '>" + open + close + "'></SUBGEN>"));              // a quote JUCE does not see
+    CHECK(refused(root + "<!-- " + close + " -->" + open + close + "</SUBGEN>"));
+    CHECK(refused(root + "<?pi " + close + " ?>" + open + close + "</SUBGEN>"));
+    CHECK(refused(close + root + open + close + "</SUBGEN>")); // closings first, to start below zero
+    // and nothing a state never holds: a DOCTYPE, a comment, a header not at the start, a bare '<' in a value
+    CHECK(refused("<!DOCTYPE x [<!ENTITY a \"b\">]>" + root + "</SUBGEN>"));
+    CHECK(refused(root + "<!-- a comment --></SUBGEN>"));
+    CHECK(refused(root + "<?xml version=\"1.0\"?></SUBGEN>"));
+    CHECK(refused(root + "<PRESET name=\"a<b\"/></SUBGEN>"));
+    // what JUCE writes still loads, header and all
+    CHECK_FALSE(refused("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + root
+                        + "<PARAM id=\"drive\" value=\"33.0\"/>\n  <UI scale=\"1.0\" theme=\"a &amp; b\"/><AB/></SUBGEN>"));
+}
+
 TEST_CASE("T-STATE-04 corrupt and unknown states (1000 fuzzed blobs) fall back to defaults without crashing", "[state]")
 {
     const auto defaults = rawValues(*makeProcessor({}));

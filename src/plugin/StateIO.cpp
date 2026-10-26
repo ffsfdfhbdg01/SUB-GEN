@@ -34,12 +34,36 @@ double attribute(const juce::XmlElement& e, const char* name, double lo, double 
     return v ? std::clamp(*v, lo, hi) : fallback;
 }
 
-// The deepest element nesting of XML text, read without parsing: comments, declarations and quoted attribute values
-// are skipped, self-closing elements do not nest.
+// The deepest element nesting of XML text as JUCE's parser will recurse through it, or -1 for text a state never
+// holds. JUCE reads a closing tag to its first '>', CDATA to "]]>", skips comments and processing instructions
+// anywhere and carries on after most errors, so a scan that reads any construct differently can be steered to
+// undercount. This one accepts only what a state holds and refuses the rest (fail closed): an XML header at the very
+// start, start tags with quoted attribute values (no '<' in them), closing tags, self-closing tags and text; no
+// comment, CDATA, DOCTYPE or other <! or <? construct, nothing unterminated. A closing tag past the root counts as
+// none.
 int nestingDepth(const char* s, size_t n)
 {
+    auto at = [&](size_t i, const char* t) {
+        for (size_t k = 0; t[k] != 0; ++k)
+            if (i + k >= n || s[i + k] != t[k])
+                return false;
+        return true;
+    };
+    auto name = [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'
+            || c == ':' || c == '.';
+    };
+    auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
     int depth = 0, deepest = 0;
     size_t i = 0;
+    if (at(0, "<?xml"))
+    {
+        static constexpr char kEnd[] = {'?', '>'};
+        const char* end = std::search(s, s + n, kEnd, kEnd + 2);
+        if (end == s + n)
+            return -1;
+        i = static_cast<size_t>(end - s) + 2;
+    }
     while (i < n)
     {
         if (s[i] != '<')
@@ -47,31 +71,53 @@ int nestingDepth(const char* s, size_t n)
             ++i;
             continue;
         }
-        if (i + 3 < n && s[i + 1] == '!' && s[i + 2] == '-' && s[i + 3] == '-') // a comment
+        if (at(i, "<!") || at(i, "<?"))
+            return -1;
+        if (at(i, "</")) // to the first '>', as JUCE reads it
         {
-            static constexpr char kEnd[] = {'-', '-', '>'};
-            const char* end = std::search(s + i + 4, s + n, kEnd, kEnd + 3);
-            i = static_cast<size_t>(end - s) + 3;
+            const char* end = std::find(s + i, s + n, '>');
+            if (end == s + n)
+                return -1;
+            depth = std::max(0, depth - 1);
+            i = static_cast<size_t>(end - s) + 1;
             continue;
         }
-        const bool declaration = i + 1 < n && (s[i + 1] == '?' || s[i + 1] == '!');
-        const bool closing = i + 1 < n && s[i + 1] == '/';
         size_t j = i + 1;
-        char quote = 0;
-        while (j < n && (quote != 0 || s[j] != '>'))
+        if (j >= n || !name(s[j]))
+            return -1;
+        while (j < n && name(s[j]))
+            ++j;
+        for (;;) // the attributes, to '>' or "/>"
         {
-            if (quote != 0)
-                quote = s[j] == quote ? 0 : quote;
-            else if (s[j] == '"' || s[j] == '\'')
-                quote = s[j];
+            while (j < n && space(s[j]))
+                ++j;
+            if (j >= n)
+                return -1;
+            if (s[j] == '>' || at(j, "/>"))
+                break;
+            if (!name(s[j]))
+                return -1;
+            while (j < n && name(s[j]))
+                ++j;
+            while (j < n && space(s[j]))
+                ++j;
+            if (j >= n || s[j] != '=')
+                return -1;
+            ++j;
+            while (j < n && space(s[j]))
+                ++j;
+            if (j >= n || (s[j] != '"' && s[j] != '\''))
+                return -1;
+            const char quote = s[j++];
+            while (j < n && s[j] != quote && s[j] != '<')
+                ++j;
+            if (j >= n || s[j] != quote)
+                return -1;
             ++j;
         }
-        const bool selfClosing = j < n && s[j - 1] == '/';
-        if (closing)
-            --depth;
-        else if (!declaration && !selfClosing)
+        if (s[j] == '>')
             deepest = std::max(deepest, ++depth);
-        i = j + 1;
+        i = j + (s[j] == '>' ? 1 : 2);
     }
     return deepest;
 }
@@ -216,8 +262,10 @@ std::unique_ptr<juce::XmlElement> decompressState(const void* data, int sizeInBy
             return nullptr;
     }
     const auto* chars = static_cast<const char*>(text.getData());
-    if (text.isEmpty() || !juce::CharPointer_UTF8::isValidString(chars, static_cast<int>(text.getSize()))
-        || nestingDepth(chars, text.getSize()) > kMaxDepth)
+    if (text.isEmpty() || !juce::CharPointer_UTF8::isValidString(chars, static_cast<int>(text.getSize())))
+        return nullptr;
+    const int depth = nestingDepth(chars, text.getSize());
+    if (depth < 0 || depth > kMaxDepth)
         return nullptr;
     return juce::parseXML(juce::String::fromUTF8(chars, static_cast<int>(text.getSize())));
 }
