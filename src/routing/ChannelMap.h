@@ -48,8 +48,10 @@ struct ChannelMap
 
 ChannelInfo classify(juce::AudioChannelSet::ChannelType type);
 
-// Channel c of the set sits at bufferIndices[c] of the block buffer (getChannelIndexInProcessBlockBuffer).
-ChannelMap buildChannelMap(const juce::AudioChannelSet& set, std::span<const int> bufferIndices);
+// Channel c of the set sits at bufferIndices[c] of a block buffer of bufferChannels channels
+// (getChannelIndexInProcessBlockBuffer); a missing or out-of-range index makes the channel Other with bufferIndex -1,
+// which no stage reads or writes. A set of over 32 channels maps nothing.
+ChannelMap buildChannelMap(const juce::AudioChannelSet& set, std::span<const int> bufferIndices, int bufferChannels);
 
 // SPEC_IO_UI §2.1: every channel is in a class of §1 (LFE2 passes through); ambisonic, discrete and unknown are not.
 bool isSupportedLayout(const juce::AudioChannelSet& set);

@@ -6,6 +6,7 @@
 #include <numbers>
 
 #include "core/Quality.h"
+#include "core/SampleRate.h"
 
 namespace subgen::routing
 {
@@ -15,6 +16,7 @@ constexpr double kSmoothMs = 20.0;
 constexpr double kRmsMs = 200.0;
 constexpr double kSwitchMs = 30.0;
 constexpr double kHysteresis = 1.4125375446227544; // 1.5 dB in mean square
+constexpr int kMaxChunk = 1 << 16;
 
 double sCurve(double u) { return 0.5 - 0.5 * std::cos(std::numbers::pi * u); }
 
@@ -26,13 +28,13 @@ bool inRightGroup(Side s) { return s != Side::Left; }
 
 void SourceMixer::prepare(double sampleRate, int maxBlock, const ChannelMap& in)
 {
-    fs = std::isfinite(sampleRate) && sampleRate > 0.0 ? sampleRate : 48000.0;
+    fs = sanitizeSampleRate(sampleRate);
     map = in;
     hasLeft = hasRight = false;
     for (int c = 0; c < map.count; ++c)
     {
         const auto& info = map.ch[static_cast<size_t>(c)];
-        if (info.cls == ChannelClass::Other)
+        if (info.cls == ChannelClass::Other || info.bufferIndex < 0)
             continue;
         hasLeft = hasLeft || info.side == Side::Left;
         hasRight = hasRight || info.side == Side::Right;
@@ -45,7 +47,7 @@ void SourceMixer::prepare(double sampleRate, int maxBlock, const ChannelMap& in)
     bandLeft.prepare(fs);
     bandRight.prepare(fs);
     corr.prepare(fs);
-    key.assign(static_cast<size_t>(std::max(maxBlock, 1)), 0.0);
+    key.assign(static_cast<size_t>(std::clamp(maxBlock, 1, kMaxChunk)), 0.0);
     reset();
 }
 
@@ -93,6 +95,23 @@ void SourceMixer::process(const double* const* in, int n, const double* const* k
                           std::span<double> sR)
 {
     const size_t count = std::min({static_cast<size_t>(std::max(n, 0)), sL.size(), sR.size()});
+    if (key.empty()) // not prepared
+    {
+        std::fill(sL.begin(), sL.begin() + static_cast<std::ptrdiff_t>(count), 0.0);
+        std::fill(sR.begin(), sR.begin() + static_cast<std::ptrdiff_t>(count), 0.0);
+        return;
+    }
+    for (size_t done = 0; done < count;) // in chunks of the key buffer
+    {
+        const size_t len = std::min(count - done, key.size());
+        processChunk(in, done, len, keyIn, keyCh, sL.subspan(done, len), sR.subspan(done, len));
+        done += len;
+    }
+}
+
+void SourceMixer::processChunk(const double* const* in, size_t offset, size_t count, const double* const* keyIn, int keyCh,
+                               std::span<double> sL, std::span<double> sR)
+{
     keyLength = 0;
     if (params.keyMode != KeyMode::Off && keyIn != nullptr && keyCh > 0)
     {
@@ -101,7 +120,7 @@ void SourceMixer::process(const double* const* in, int n, const double* const* k
         {
             double sum = 0.0;
             for (int c = 0; c < keyCh; ++c)
-                sum += keyIn[c][i];
+                sum += keyIn[c][offset + i];
             key[i] = sum * keyGain.next();
         }
     }
@@ -113,7 +132,7 @@ void SourceMixer::process(const double* const* in, int n, const double* const* k
         if (detect)
             left = right = i < keyLength ? key[i] : 0.0;
         else if (map.count == 1)
-            left = right = in[map.ch[0].bufferIndex][i] * srcGain.next();
+            left = right = map.ch[0].bufferIndex >= 0 ? in[map.ch[0].bufferIndex][offset + i] * srcGain.next() : 0.0;
         else
         {
             std::array<double, kNumClasses> w{};
@@ -123,10 +142,10 @@ void SourceMixer::process(const double* const* in, int n, const double* const* k
             for (int c = 0; c < map.count; ++c)
             {
                 const auto& info = map.ch[static_cast<size_t>(c)];
-                if (info.cls == ChannelClass::Other)
+                if (info.cls == ChannelClass::Other || info.bufferIndex < 0)
                     continue;
                 const double weight = w[static_cast<size_t>(info.cls)];
-                const double v = weight * in[info.bufferIndex][i];
+                const double v = weight * in[info.bufferIndex][offset + i];
                 if (inLeftGroup(info.side))
                 {
                     numL += v;

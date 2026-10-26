@@ -13,6 +13,7 @@
 
 #include "dsp/FilterCascade.h"
 #include "dsp/FilterDesign.h"
+#include "core/SampleRate.h"
 #include "routing/ChannelMap.h"
 #include "routing/Router.h"
 #include "routing/SourceMixer.h"
@@ -37,7 +38,7 @@ ChannelMap mapOf(const Set& set)
 {
     std::vector<int> order(static_cast<size_t>(set.size()));
     std::iota(order.begin(), order.end(), 0);
-    return buildChannelMap(set, order);
+    return buildChannelMap(set, order, set.size());
 }
 
 // The amplitude of the tone at f in y[from, to): a least-squares fit of a cos + b sin.
@@ -607,7 +608,7 @@ TEST_CASE("T-IO-02 channel-order permutations (film, Logic, VST3, DTS) give iden
         for (int c = 0; c < set.size(); ++c)
             position[static_cast<size_t>(c)] = static_cast<int>(
                 std::find(orders[o].begin(), orders[o].end(), set.getTypeOfChannel(c)) - orders[o].begin());
-        const auto map = buildChannelMap(set, position);
+        const auto map = buildChannelMap(set, position, set.size());
         Channels in(orders[o].size());
         for (size_t b = 0; b < orders[o].size(); ++b)
             in[b] = sig::sine(tone.at(orders[o][b]), kFs, 0.3, -12.0);
@@ -677,4 +678,78 @@ TEST_CASE("the routing stages do not allocate", "[routing]")
         allocations += guard.count();
     }
     CHECK(allocations == 0);
+}
+
+TEST_CASE("routing survives bad buffer indices, short streams, odd sample rates and big blocks", "[routing]")
+{
+    // a buffer index outside the block buffer is dropped, not followed
+    const std::vector<int> wild{0, 7};
+    const auto map = buildChannelMap(Set::stereo(), wild, 2);
+    CHECK(map.ch[0].bufferIndex == 0);
+    CHECK(map.ch[1].bufferIndex == -1);
+    CHECK(map.ch[1].cls == ChannelClass::Other);
+    std::vector<double> l(64, 0.5), r(64, 0.25), sL(64), sR(64);
+    std::vector<const double*> in{l.data(), r.data()};
+    SourceMixer mixer;
+    mixer.prepare(kFs, 64, map);
+    SourceParams louder;
+    louder.mode = SourceMode::Max;
+    mixer.setParams(louder);
+    mixer.process(in.data(), 64, nullptr, 0, sL, sR);
+    CHECK(sL.back() == 0.5); // the left channel alone: the right group lost its only channel
+    Router router;
+    router.prepare(kFs, 64, map);
+    RouterParams rp;
+    rp.mode = OutMode::Stereo;
+    router.setParams(rp);
+    std::vector<double> o0(64, 1.0), o1(64, 1.0);
+    std::vector<double*> out{o0.data(), o1.data()};
+    router.process(sL, {}, out.data(), 64);
+    CHECK(o1.back() == 1.0); // channel 1 is nobody's: untouched
+    // a layout over 32 channels maps nothing (isSupportedLayout rejects it)
+    std::vector<int> many(40);
+    std::iota(many.begin(), many.end(), 0);
+    CHECK(buildChannelMap(Set::discreteChannels(40), many, 40).count == 0);
+    // a stream shorter than the block: the rest of the output is silence, not stale samples
+    const auto stereo = mapOf(Set::stereo());
+    Router shortRouter;
+    shortRouter.prepare(kFs, 64, stereo);
+    shortRouter.setParams(rp);
+    std::fill(o0.begin(), o0.end(), std::numeric_limits<double>::quiet_NaN());
+    std::fill(o1.begin(), o1.end(), std::numeric_limits<double>::quiet_NaN());
+    shortRouter.process(std::span<const double>(sL).first(32), {}, out.data(), 64);
+    CHECK(std::all_of(o0.begin() + 32, o0.end(), [](double v) { return v == 0.0; }));
+    CHECK(std::all_of(o1.begin() + 32, o1.end(), [](double v) { return v == 0.0; }));
+    // sample rates outside 8 kHz ... 768 kHz are clamped (a 10 ms route delay at "10 MHz" is 7680 samples)
+    CHECK(sanitizeSampleRate(1e12) == 768000.0);
+    CHECK(sanitizeSampleRate(1.0) == 8000.0);
+    CHECK(sanitizeSampleRate(std::numeric_limits<double>::quiet_NaN()) == 48000.0);
+    CHECK(sanitizeSampleRate(-44100.0) == 48000.0);
+    CHECK(sanitizeSampleRate(96000.0) == 96000.0);
+    Router fast;
+    fast.prepare(1e7, 64, stereo);
+    RouterParams delayed = rp;
+    delayed.classDelayMs[0] = 10.0;
+    fast.setParams(delayed);
+    std::vector<double> pulse(8192, 0.0), f0(8192), f1(8192);
+    pulse[0] = 1.0;
+    std::vector<double*> fo{f0.data(), f1.data()};
+    for (size_t i = 0; i < pulse.size(); i += 64)
+    {
+        std::vector<double*> at{f0.data() + i, f1.data() + i};
+        fast.process(std::span<const double>(pulse).subspan(i, 64), {}, at.data(), 64);
+    }
+    CHECK(f0[7680] == 1.0);
+    // a block longer than maxBlock is processed whole, in chunks: Detect gives the key on every sample
+    const auto mono = mapOf(Set::mono());
+    SourceMixer keyed;
+    keyed.prepare(kFs, 64, mono);
+    SourceParams kp;
+    kp.keyMode = KeyMode::Detect;
+    keyed.setParams(kp);
+    std::vector<double> src(4096, 0.0), key(4096, 0.125), kL(4096), kR(4096);
+    const double* srcPtr = src.data();
+    const double* keyPtr = key.data();
+    keyed.process(&srcPtr, 4096, &keyPtr, 1, kL, kR);
+    CHECK(std::all_of(kL.begin(), kL.end(), [](double v) { return v == 0.125; }));
 }

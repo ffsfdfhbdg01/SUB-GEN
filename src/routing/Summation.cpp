@@ -5,6 +5,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "core/SampleRate.h"
+
 namespace subgen::routing
 {
 namespace
@@ -45,7 +47,7 @@ void mixLaw(double m, bool equalPower, double& a, double& b)
 
 void Summation::prepare(double sampleRate)
 {
-    fs = std::isfinite(sampleRate) && sampleRate > 0.0 ? sampleRate : 48000.0;
+    fs = sanitizeSampleRate(sampleRate);
     reset();
 }
 

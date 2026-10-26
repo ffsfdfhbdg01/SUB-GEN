@@ -6,6 +6,7 @@
 #include <numbers>
 
 #include "core/Quality.h"
+#include "core/SampleRate.h"
 
 namespace subgen::routing
 {
@@ -25,7 +26,7 @@ int lfeOrder(int slope) { return slope <= 18 ? 2 : slope <= 36 ? 4 : slope <= 72
 
 void Router::prepare(double sampleRate, [[maybe_unused]] int maxBlock, const ChannelMap& out)
 {
-    fs = std::isfinite(sampleRate) && sampleRate > 0.0 ? sampleRate : 48000.0;
+    fs = sanitizeSampleRate(sampleRate);
     map = out;
     for (auto& d : delay)
         d.prepare(msToSamples(kMaxDelayMs, fs) + 1);
@@ -153,6 +154,8 @@ void Router::process(std::span<const double> s1, std::span<const double> s2, dou
         for (int c = 0; c < map.count; ++c)
         {
             const auto& info = map.ch[static_cast<size_t>(c)];
+            if (info.bufferIndex < 0)
+                continue;
             double v = 0.0;
             if (info.cls != ChannelClass::Other)
             {
@@ -165,6 +168,13 @@ void Router::process(std::span<const double> s1, std::span<const double> s2, dou
         }
         if (modeFading)
             modeFading = modeFade.isSmoothing();
+    }
+    for (int c = 0; c < map.count; ++c) // a stream shorter than the block: the rest is silence
+    {
+        const int index = map.ch[static_cast<size_t>(c)].bufferIndex;
+        if (index >= 0)
+            for (size_t i = count; i < static_cast<size_t>(std::max(n, 0)); ++i)
+                out[index][i] = 0.0;
     }
 }
 } // namespace subgen::routing

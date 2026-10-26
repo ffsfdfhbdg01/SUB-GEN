@@ -44,8 +44,9 @@ struct SourceParams
 // S_R)/2; Max: the group with the larger RMS (200 ms window), switching beyond 1.5 dB with a 30 ms crossfade; Per-
 // Channel: two streams; Auto: by the correlation of S_L and S_R in the source band (300 ms), Sum for rho >= +0.25, Max
 // for rho <= -0.25, a linear blend between. The key bus (summed, x sc_gain) replaces the source in Detect mode and is
-// kept for TRIGGER's detector in Trigger mode. sL is the first stream, sR the second (equal to sL with one). No
-// allocation after prepare.
+// kept for TRIGGER's detector in Trigger mode (keyStream(): the last chunk's, at most maxBlock samples). sL is the
+// first stream, sR the second (equal to sL with one). A block longer than maxBlock runs in chunks. No allocation after
+// prepare.
 class SourceMixer
 {
 public:
@@ -61,6 +62,9 @@ public:
     std::span<const double> keyStream() const { return {key.data(), keyLength}; }
 
 private:
+    void processChunk(const double* const* in, size_t offset, size_t count, const double* const* key, int keyCh,
+                      std::span<double> sL, std::span<double> sR);
+
     double fs = 48000.0;
     ChannelMap map;
     SourceParams params;

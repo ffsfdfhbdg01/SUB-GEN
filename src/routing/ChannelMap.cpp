@@ -47,15 +47,21 @@ ChannelInfo classify(juce::AudioChannelSet::ChannelType type)
     }
 }
 
-ChannelMap buildChannelMap(const juce::AudioChannelSet& set, std::span<const int> bufferIndices)
+ChannelMap buildChannelMap(const juce::AudioChannelSet& set, std::span<const int> bufferIndices, int bufferChannels)
 {
     ChannelMap map;
-    map.count = std::min(set.size(), static_cast<int>(map.ch.size()));
+    if (set.size() > static_cast<int>(map.ch.size()))
+        return map; // over 32 channels: isSupportedLayout rejects the layout, nothing is mapped
+    map.count = set.size();
     for (int c = 0; c < map.count; ++c)
     {
         auto& info = map.ch[static_cast<size_t>(c)];
         info = classify(set.getTypeOfChannel(c));
-        info.bufferIndex = static_cast<size_t>(c) < bufferIndices.size() ? bufferIndices[static_cast<size_t>(c)] : c;
+        const int index = static_cast<size_t>(c) < bufferIndices.size() ? bufferIndices[static_cast<size_t>(c)] : -1;
+        if (index < 0 || index >= bufferChannels)
+            info = {ChannelClass::Other, Side::None, -1}; // not in the block buffer: nobody's channel
+        else
+            info.bufferIndex = index;
         map.hasLfe = map.hasLfe || info.cls == ChannelClass::Lfe;
     }
     return map;
