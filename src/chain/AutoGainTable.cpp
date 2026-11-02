@@ -8,8 +8,6 @@
 #include <numbers>
 
 #include "dsp/Fft.h"
-#include "dsp/FilterCascade.h"
-#include "dsp/FilterDesign.h"
 
 namespace subgen::chain
 {
@@ -19,7 +17,6 @@ constexpr int kModes = 5;
 constexpr int kDrives = 101;  // 0, 1, ..., 100 % (5 % is a node: alpha's kink)
 constexpr int kBalances = 11; // -100, -80, ..., +100
 constexpr int kOrder = 11;    // 2048 points
-constexpr double kLimitDb = 18.0; // provisional safety limit (F-8)
 std::atomic<int> computed{0};
 } // namespace
 
@@ -68,8 +65,7 @@ const double* AutoGainTable::cell(int mode, int drive, int balance) const
     return power.data() + ((mode * kDrives + drive) * kBalances + balance) * kHarmonics;
 }
 
-double AutoGainTable::compensationDb(DriveMode mode, double drivePct, double balance, double fSub1Hz, double toneHz,
-                                     double alpha, double fs) const
+double AutoGainTable::compensationDb(DriveMode mode, double drivePct, double balance, double fSub1Hz, double fs) const
 {
     const double dPos = std::clamp(drivePct, 0.0, 100.0);
     const double bPos = (std::clamp(balance, -100.0, 100.0) + 100.0) / 20.0;
@@ -82,10 +78,6 @@ double AutoGainTable::compensationDb(DriveMode mode, double drivePct, double bal
     const double* p10 = cell(m, d0 + 1, b0);
     const double* p01 = cell(m, d0, b0 + 1);
     const double* p11 = cell(m, d0 + 1, b0 + 1);
-    dsp::FilterCascade tone;
-    const bool withTone = toneHz > 0.0;
-    if (withTone)
-        tone.set(dsp::designFilter(dsp::FilterFamily::Butterworth, dsp::FilterKind::LowPass, 2, toneHz, fs));
     double meanSquare = 0.0;
     for (int k = 1; k <= kHarmonics; ++k)
     {
@@ -93,11 +85,8 @@ double AutoGainTable::compensationDb(DriveMode mode, double drivePct, double bal
         if (f >= 0.5 * fs)
             break;
         const size_t i = static_cast<size_t>(k - 1);
-        const double pk = (1.0 - t) * (1.0 - s) * p00[i] + t * (1.0 - s) * p10[i] + (1.0 - t) * s * p01[i] + t * s * p11[i];
-        const std::complex<double> response =
-            withTone ? (1.0 - alpha) + alpha * tone.response(f, fs) : std::complex<double>(1.0, 0.0);
-        meanSquare += 0.5 * pk * std::norm(response);
+        meanSquare += 0.5 * ((1.0 - t) * (1.0 - s) * p00[i] + t * (1.0 - s) * p10[i] + (1.0 - t) * s * p01[i] + t * s * p11[i]);
     }
-    return meanSquare > 0.0 ? std::clamp(-10.0 * std::log10(2.0 * meanSquare), -kLimitDb, kLimitDb) : 0.0;
+    return meanSquare > 0.0 ? -10.0 * std::log10(2.0 * meanSquare) : 0.0;
 }
 } // namespace subgen::chain

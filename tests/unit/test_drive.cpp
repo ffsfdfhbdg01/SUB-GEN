@@ -15,6 +15,8 @@
 #include "chain/Drive.h"
 #include "chain/DriveShapes.h"
 #include "core/Quality.h"
+#include "dsp/FilterCascade.h"
+#include "dsp/FilterDesign.h"
 #include "support/AllocGuard.h"
 #include "support/Dft.h"
 #include "support/Golden.h"
@@ -198,11 +200,11 @@ TEST_CASE("T-DRV-02 ADAA lowers non-harmonic power by >= 6 dB vs naive (Hard 100
     CHECK(withAdaa <= without - 6.0);
 }
 
-TEST_CASE("T-DRV-03 Auto Gain within +-0.5 dB: all modes, drive 5-100 %, balance -100/0/100, Tone 60/500/2000 Hz at "
+TEST_CASE("T-DRV-03 Auto Gain compensates the shaper within +-0.5 dB: all modes, drive 5-100 %, balance -100/0/100, "
           "f_sub1 30/60/120 Hz",
           "[drive]")
 {
-    // the table against the prototype's G_c (PHASE2_REPORT Annex A, no Tone)
+    // the table against the prototype's G_c (PHASE2_REPORT Annex A)
     const auto golden = test::Golden::load("drive.sgg");
     const auto& table = AutoGainTable::instance();
     for (const DriveMode mode : kModes)
@@ -213,11 +215,10 @@ TEST_CASE("T-DRV-03 Auto Gain within +-0.5 dB: all modes, drive 5-100 %, balance
             for (const double d : {5.0, 10.0, 25.0, 50.0, 75.0, 100.0})
             {
                 INFO(modeName(mode) << " drive " << d << " balance " << b);
-                CHECK(std::abs(table.compensationDb(mode, d, b, 55.0, 0.0, std::min(1.0, d / 5.0), kFs) - gc[i++]) <=
-                      0.1);
+                CHECK(std::abs(table.compensationDb(mode, d, b, 55.0, kFs) - gc[i++]) <= 0.1);
             }
     }
-    // the stage: the RMS of the reference sine at f_sub1 as with drive 0
+    // the stage without the Tone (F-8: the Tone is not compensated): the RMS of the reference sine as with drive 0
     double worst = 0.0;
     for (const double fSub1 : {30.0, 60.0, 120.0})
     {
@@ -226,56 +227,60 @@ TEST_CASE("T-DRV-03 Auto Gain within +-0.5 dB: all modes, drive 5-100 %, balance
         for (const DriveMode mode : kModes)
             for (const double d : {5.0, 10.0, 25.0, 50.0, 75.0, 100.0})
                 for (const double b : {-100.0, 0.0, 100.0})
-                    for (const double tone : {60.0, 500.0, 2000.0})
+                {
+                    DriveParams p;
+                    p.drivePct = d;
+                    p.mode = mode;
+                    p.balance = b;
+                    p.tone = false;
+                    p.fSub1Hz = fSub1;
+                    const auto y = runDrive(x, Quality::Live, p);
+                    const double dev = std::abs(20.0 * std::log10(rmsOf(y, 19200, 28800) / in));
+                    worst = std::max(worst, dev);
+                    if (dev > 0.5)
                     {
-                        if (mode == DriveMode::Fold && tone == 60.0)
-                            continue; // finding F-8: see the test below
-                        DriveParams p;
-                        p.drivePct = d;
-                        p.mode = mode;
-                        p.balance = b;
-                        p.toneHz = tone;
-                        p.fSub1Hz = fSub1;
-                        const auto y = runDrive(x, Quality::Live, p);
-                        const double dev = std::abs(20.0 * std::log10(rmsOf(y, 19200, 28800) / in));
-                        worst = std::max(worst, dev);
-                        if (dev > 0.5)
-                        {
-                            INFO(modeName(mode) << " drive " << d << " balance " << b << " Tone " << tone << " f_sub1 "
-                                                << fSub1 << ": " << dev << " dB");
-                            CHECK(dev <= 0.5);
-                        }
+                        INFO(modeName(mode) << " drive " << d << " balance " << b << " f_sub1 " << fSub1 << ": " << dev
+                                            << " dB");
+                        CHECK(dev <= 0.5);
                     }
+                }
     }
     INFO("worst deviation " << worst << " dB");
     CHECK(worst <= 0.5);
 }
 
-TEST_CASE("T-DRV-03 Fold with a 60 Hz Tone (finding F-8, open: the exact compensation runs to +55 dB)",
-          "[drive][!shouldfail]")
+TEST_CASE("Auto Gain leaves the Tone alone (F-8): with the Tone on, the output is the Tone-off output through the Tone",
+          "[drive]")
 {
-    // With the Tone far below the sub's harmonics, SPEC §7.3's Auto Gain (D4) would have to undo most of the Tone:
-    // up to +55.6 dB for Fold (spectral nulls of the folded sine, 14 dB per 0.1 % of drive), which no table follows
-    // and no plug-in should apply. The table is limited to +-18 dB; this test keeps the SPEC's criterion visible.
-    double worst = 0.0;
-    for (const double fSub1 : {30.0, 60.0, 120.0})
-    {
-        const auto x = sig::sine(fSub1, kFs, 0.6, -12.0);
-        const double in = rmsOf(x, 19200, 28800);
-        for (const double d : {5.0, 10.0, 25.0, 50.0, 75.0, 100.0})
-            for (const double b : {-100.0, 0.0, 100.0})
+    // After the shaper everything is linear (Tone, 5 Hz high-pass, Auto Gain), so with a gain that ignores the Tone the
+    // Tone-on output is the Tone-off output through the Tone's low-pass (alpha 1 from 5 % drive). A Tone far below the
+    // sub's harmonics, which SPEC 0.4's Auto Gain (D4) chased up to +55 dB, now lowers the level as any tone control.
+    for (const double fSub1 : {30.0, 120.0})
+        for (const DriveMode mode : {DriveMode::Fold, DriveMode::Hard, DriveMode::Tube})
+            for (const double toneHz : {60.0, 500.0})
             {
+                INFO(modeName(mode) << " f_sub1 " << fSub1 << " Tone " << toneHz);
+                const auto x = sig::sine(fSub1, kFs, 0.6, -12.0);
                 DriveParams p;
-                p.drivePct = d;
-                p.mode = DriveMode::Fold;
-                p.balance = b;
-                p.toneHz = 60.0;
+                p.drivePct = 50.0;
+                p.mode = mode;
+                p.toneHz = toneHz;
                 p.fSub1Hz = fSub1;
-                worst = std::max(worst, std::abs(20.0 * std::log10(rmsOf(runDrive(x, Quality::Live, p), 19200, 28800) / in)));
+                const auto on = runDrive(x, Quality::Live, p);
+                p.tone = false;
+                auto through = runDrive(x, Quality::Live, p);
+                dsp::FilterCascade lp;
+                lp.set(dsp::designFilter(dsp::FilterFamily::Butterworth, dsp::FilterKind::LowPass, 2, toneHz, kFs));
+                for (auto& v : through)
+                    v = lp.process(v);
+                double worst = 0.0, peak = 0.0;
+                for (size_t i = 9600; i < on.size(); ++i)
+                {
+                    worst = std::max(worst, std::abs(on[i] - through[i]));
+                    peak = std::max(peak, std::abs(on[i]));
+                }
+                CHECK(worst <= 1e-9 * peak);
             }
-    }
-    INFO("worst deviation " << worst << " dB");
-    CHECK(worst <= 0.5);
 }
 
 TEST_CASE("T-DRV-04 DC after the 5 Hz high-pass <= -80 dBFS", "[drive]")

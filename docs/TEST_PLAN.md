@@ -1,6 +1,6 @@
 # SUB-GEN — TEST PLAN (Faza 1)
 
-Wersja dokumentu: 0.4 (korekty z Fazy 2: PHASE2_REPORT §6; po przeglądzie D8: §11; F-1 z Fazy 3: §12, ADR-030) · Data: 2026-10-24 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [SPEC_BUILD_RELEASE.md](SPEC_BUILD_RELEASE.md), [PARAMETERS.md](PARAMETERS.md)
+Wersja dokumentu: 0.5 (korekty z Fazy 2: PHASE2_REPORT §6; po przeglądzie D8: §11; F-1 z Fazy 3: §12, ADR-030; F-8 z Fazy 3: §13, ADR-031) · Data: 2026-11-02 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [SPEC_BUILD_RELEASE.md](SPEC_BUILD_RELEASE.md), [PARAMETERS.md](PARAMETERS.md)
 Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynikiem, wersją i datą.
 
 ## 1. Zasady
@@ -76,7 +76,7 @@ Wyniki będą trafiać do `docs/TEST_REPORT.md` (Faza 5) — każdy test z wynik
 |---|---|---|---|---|
 | T-DRV-01 | SPEC §7.3 | widmo harmonicznych per charakter i poziom vs implementacja wzorcowa 16× | błąd ≤ 1 dB dla harmonicznych ≥ −60 dB | U · CI |
 | T-DRV-02 | SPEC §7.3 | ADAA1 vs naiwne: Hard przy drive = 100% | moc nieharmoniczna (81 Hz) niższa o ≥ 6 dB (informacyjnie; P2: 7,8–9,7 dB; K-21) | U · L |
-| T-DRV-03 | SPEC §7.3 | Auto Gain: RMS sinusa referencyjnego dla drive 0…100, wszystkie charaktery i bias; z Tone 60 / 500 / 2000 Hz przy `f_sub1` ∈ {30, 60, 120 Hz} (D4) | odchyłka ≤ ±0,5 dB (P2 bez Tone: 0,036 dB) | U · CI |
+| T-DRV-03 | SPEC §7.3 | Auto Gain kompensuje kształtownik (F-8, ADR-031): RMS sinusa referencyjnego dla drive 0…100, wszystkie charaktery i bias, bez Tone, przy `f_sub1` ∈ {30, 60, 120 Hz}; Tone nie jest kompensowany (zmienia poziom) | odchyłka ≤ ±0,5 dB (P2: 0,036 dB) | U · CI |
 | T-DRV-04 | SPEC §7.3 | DC po Drive asymetrycznym i po filtrze 5 Hz | ≤ −80 dBFS | U · CI |
 | T-DRV-05 | SPEC §7.3 | `drive` = 0 tożsamość; ciągłość wtapiania α | bit-exact (double); ciągłość α: zmiana wyjścia proporcjonalna do kroku parametru, ≤ 1·10⁻² względnie na krok 0,1 % `drive` (P2: 4,2–7,2·10⁻³, liniowo z krokiem) | U · CI |
 | T-DRV-06 | SPEC §7.3, SPEC_IO_UI §4 | tryb LFE: harmoniczne powyżej `lfe_lp_freq` | tłumienie zgodne z nachyleniem LPF | U · CI |

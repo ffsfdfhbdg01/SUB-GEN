@@ -62,7 +62,7 @@ Raport: `docs/PHASE2_REPORT.md`. Wszystkie wpisy zostały **zaakceptowane na bra
 | ADR-015 | L_look Live/Mix/Print = 0/47/65 ms | Zaakceptowana (D3) | TRACK potrzebuje 2 okresów; 25/50 ms wyrównuje tylko nuty ≥ 100/45 Hz | 25/50 ms ze SPEC |
 | ADR-016 | HARMONIC: obwiednia max-hold 1,5 okresu `range_lo` + 5/60 ms | Zaakceptowana | obwiednia ze SPEC daje 13,6 dB błędu wag; max-hold 0,017 dB | peak follower ze SPEC |
 | ADR-017 | Drive: aliasing jako składowe nieharmoniczne (tony 31/81/121 Hz); kryterium po LP toru sub | Zaakceptowana (D2) | Hard 100 %: Live −55 / Mix −77 / Print −95 dB pełnopasmowo, −129 dB poniżej 500 Hz (−6 dBFS, 48 kHz); uzupełniona przez ADR-027 (wejścia do +12 dBFS) | progi pełnopasmowe; 2× także w Live |
-| ADR-018 | Auto Gain na RMS(AC) mieszanki α, z Tone przy f_sub1 | Zaakceptowana (D4) | ±0,04 dB bez Tone; z Tone 500 Hz bez kompensacji do −8,8 dB | bez Tone |
+| ADR-018 | Auto Gain na RMS(AC) mieszanki α, z Tone przy f_sub1 | Zaakceptowana (D4) | ±0,04 dB bez Tone; z Tone 500 Hz bez kompensacji do −8,8 dB; Tone wyłączony z kompensacji przez ADR-031 (F-8) | bez Tone |
 | ADR-019 | Para Hilberta 4 sekcje/gałąź; Auto-Align analizuje sub po gałęzi A; kanonicznie \|θ\| ≤ 90° z polaryzacją | Zaakceptowana | 0,133°, ±0,010 dB; θ = 0 = gałąź A (do 9,8 ms opóźnienia) | 3 sekcje (0,86°, ±0,065 dB) |
 | ADR-020 | Linear Phase: cel \|H\|, Kaiser β = 3, nieparzyste N; v1.0 tylko dla LP, stała długość N_LIN (≈ 42,7 ms przy 48 kHz) | Zaakceptowana (D5) | HP 20 Hz kosztuje ~159 ms przy 48 kHz; sam LP 39 ms | HP+LP; całość w v1.1 |
 | ADR-021 | LFE: domyślnie Butterworth 24 dB/okt przy 120 Hz | Zaakceptowana | 14,25 dB przy 1,5·fc, −0,17 dB przy 80 Hz, 3,65 ms przy 40 Hz | 12/48 dB/okt, LR, Bessel |
@@ -82,10 +82,11 @@ Przegląd: `.superpowers/sdd/2026-10-19-subgen-phase2-prototype/final-review-ind
 | ADR-028 | Kompresor (R4): domyślny detektor Peak; RMS z minimalnym atakiem 0,25·T_sub | Zaakceptowana | rozprysk na onsecie: RMS −39 dB, Peak −56 dB; RMS z minimalnym atakiem −42 dB | RMS domyślny; reguła tętnień dla wszystkich detektorów |
 | ADR-029 | DIVIDE `shape` (R5): przesuw odcięcia filtra wygładzającego (×32 przy 100 %) zamiast mieszania torów | Zaakceptowana | mieszanie torów przesuniętych o 91° dawało −3,1 dB przy 50 %; teraz ±0,05 dB | wyrównanie fazy toru natywnego all-passem |
 
-## F. Faza 3: poprawki przyjęte w trakcie implementacji (2026-10-24)
+## F. Faza 3: poprawki przyjęte w trakcie implementacji (2026-10-24, 2026-11-02)
 
-Ustalenia z implementacji rdzenia C++ (plan Fazy 3, dziennik `.superpowers/sdd/2026-10-20-subgen-phase3-core/progress.md`, poza gitem); wyniki: PHASE2_REPORT §12.
+Ustalenia z implementacji rdzenia C++ (plan Fazy 3, dziennik `.superpowers/sdd/2026-10-20-subgen-phase3-core/progress.md`, poza gitem); wyniki: PHASE2_REPORT §12 i §13.
 
 | ID | Decyzja | Status | Uzasadnienie (skrót) | Alternatywy |
 |---|---|---|---|---|
 | ADR-030 | DIVIDE (F-1): poza pewnością tymczasową bramka otwiera się dopiero przy drugiej z kolei wartości pewności ≥ progu otwarcia; wartości liczone na osi czasu dzielnika (wartość tymczasowa się liczy, wartość poniżej progu zeruje licznik), licznik czytany z tym samym wyprzedzeniem co pewność; TRACK bez zmian | Zaakceptowana (2026-10-24) | akord przez domyślne pasmo źródłowe 30–120 Hz otwierał bramkę (−10,3 dB po 100 ms; T-DIV-05 wymaga ≤ −40 dB): dudnienie daje pojedyncze wartości ≥ progu; teraz −50,6 dB (Live) / −89,8 dB (Mix), szum losowy 0 %, onset stopy bez zmian (94 / 95,5 %); koszt: przy SNR 15 / 10 dB bramka otwarta 57 / 18 % czasu zamiast 68 / 27 % | dwie kolejne wartości bez liczenia wartości tymczasowej (pomiar 2026-10-22: onset stopy w Mix 78,8 % zamiast 95,5 %); mediana reszt z większej liczby okresów |
+| ADR-031 | Drive (F-8): Auto Gain kompensuje wyłącznie kształtownik (mieszankę α z biasem), bez Tone; Ton zmienia poziom jak zwykła barwa dźwięku | Zaakceptowana (2026-11-02) | dokładna kompensacja z Tone (D4) wymagała do +55,6 dB (Fold, Tone 60 Hz), +23,1 dB (Fold, Tone 500 Hz), +11,5 / +13,7 dB (Hard / Tube, Tone 60 Hz przy subie 120 Hz) i przy zerach widmowych Fold skakała o 14 dB na 0,1 % drive; bez Tone G_c mieści się w −2,95…+3,41 dB (Załącznik A raportu); koszt: Tone 500 Hz obniża poziom Fold/Hard nawet o 8,8 dB (opis w UI) | ograniczenie Auto Gain (np. ±6 / ±12 dB); kompensacja Tone do progu |

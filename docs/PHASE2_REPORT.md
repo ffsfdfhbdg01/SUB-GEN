@@ -269,6 +269,18 @@ Test C++ T-DIV-05 na akordzie (SIG-06) po domyślnym paśmie źródłowym 30–1
 | losowy szum 30–120 Hz (5 ziaren) | ≤ 1,5 % | 0 % |
 
 Koszt: w umiarkowanym szumie (SNR 10–15 dB) bramka jest otwarta rzadziej. TRACK zostaje przy jednym potwierdzeniu. Zmiany: SPEC 0.4 §6.1 i §6.2, TEST_PLAN 0.4 (T-DIV-04, T-DIV-05).
+
+## 13. Poprawka F-8 z Fazy 3 (2026-11-02)
+
+Test C++ T-DRV-03 sprawdzał Auto Gain z Tone (D4, ADR-018) i pokazał, że dokładna kompensacja Tone nie ma sensownych wartości. Gdy Tone leży poniżej harmonicznych suba, Auto Gain musiałby cofnąć większość filtra: do +55,6 dB (Fold, Tone 60 Hz), +23,1 dB (Fold, Tone 500 Hz) i +11,5 / +13,7 dB (Hard / Tube, Tone 60 Hz przy subie 120 Hz). Przy zerach widmowych składanego sinusa Fold wartość skacze o 14 dB na 0,1 % `drive`. Do czasu decyzji kompensacja była ograniczona do ±18 dB, a przypadek Fold + Tone 60 Hz był testem oczekiwanej porażki. Przyjąłeś poprawkę F-8 (ADR-031): Auto Gain kompensuje wyłącznie kształtownik, tak jak prototyp (P2-06), bez Tone. Ton zmienia poziom jak zwykła barwa dźwięku: Tone 500 Hz obniża poziom Fold/Hard nawet o 8,8 dB, co opisze UI.
+
+| Pomiar | Przed F-8 (D4) | Po F-8 |
+|---|---|---|
+| największa kompensacja | +55,6 dB, ograniczona do ±18 dB | G_c z Załącznika A: −2,95…+3,41 dB |
+| odchyłka RMS kształtownika, T-DRV-03 (5 charakterów, drive 5–100 %, balance −100/0/100, `f_sub1` 30/60/120 Hz) | ≤ 0,5 dB poza Fold z Tone 60 Hz (do 12,1 dB) | 0,118 dB we wszystkich komórkach |
+| Tone | kompensowany | zmienia poziom; wyjście z Tone = wyjście bez Tone przez filtr Tone (test) |
+
+Prototyp liczył Auto Gain bez Tone, więc się nie zmienia. Antycel 3 (SPEC §1.5) mówi teraz o zmianie nasycenia (`drive`, `drive_mode`, `drive_balance`). Zmiany: SPEC 0.5 §1.5 i §7.3, TEST_PLAN 0.5 (T-DRV-03), PARAMETERS (`drive_auto`).
 ---
 
 ## Załącznik A — Auto Gain G_c [dB]

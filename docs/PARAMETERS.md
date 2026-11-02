@@ -105,7 +105,7 @@ Liczba parametrów w v1.0: **141** (sprawdzane skryptem spójności; zob. SPEC_B
 | `drive_mode` | Drive Mode | choice | Soft · Tube · Tape · Fold · Hard | Soft | X 20 ms | A | SPEC §7.3 |
 | `drive_balance` | Even/Odd Bias | float | −100…+100 | 0 | lin · L20 | A | − więcej parzystych, + więcej nieparzystych |
 | `drive_tone` | Drive Tone | float | 60…2000 Hz | 500 | log · F20 | A | LP po saturacji |
-| `drive_auto` | Auto Gain | bool | off · on | on | – | A | kompensacja poziomu RMS |
+| `drive_auto` | Auto Gain | bool | off · on | on | – | A | kompensacja poziomu RMS kształtownika (bez Tone; F-8) |
 | `drive_pos` | Drive Position | choice | Pre-Comp · Post-Comp | Pre-Comp | X 20 ms | A | |
 
 ### 2.9 Tor sub — Compressor

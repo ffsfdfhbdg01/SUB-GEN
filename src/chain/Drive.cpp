@@ -177,10 +177,8 @@ void Drive::processChunk(std::span<double> x)
         if (i % kGainBlock == 0) // Auto Gain target from the parameters as they are now
         {
             const double d = drive.current();
-            const double a = std::min(1.0, d / 5.0);
-            const double db = params.autoGain && d > 0.0
-                                  ? AutoGainTable::instance().compensationDb(current, d, balance.current(), params.fSub1Hz,
-                                                                            params.tone ? tone.current() : 0.0, a, fs)
+            const double db = params.autoGain && d > 0.0 // the shaper only (F-8): the Tone is not compensated
+                                  ? AutoGainTable::instance().compensationDb(current, d, balance.current(), params.fSub1Hz, fs)
                                   : 0.0;
             gain.setTarget(std::pow(10.0, db / 20.0));
         }

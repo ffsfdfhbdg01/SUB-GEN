@@ -39,9 +39,10 @@ struct DriveParams
 // inputs up to -6 dBFS are untouched); the shaper with first-order ADAA (|du| > 1e-5) at 2x (Mix, half-band IIR) or
 // 4x (Print, half-band FIR) by juce::dsp::Oversampling at maximum quality and integer latency; y = (1 - alpha) x +
 // alpha nl / 10^(12/20), alpha = min(1, drive / 5); the Tone y + alpha (LP_2(y) - y); the 5 Hz first-order high-pass;
-// the Auto Gain. drive 0 is a pure delay by the latency (bit-exact), entered and left with a 20 ms crossfade; drive and
-// balance are smoothed linearly over 20 ms, the Tone in log over 20 ms, the Auto Gain multiplicatively over 20 ms; a
-// mode change crossfades over 20 ms (a further change waits for it). prepare() allocates; the other calls do not.
+// the Auto Gain of the shaper (the Tone is not compensated: F-8). drive 0 is a pure delay by the latency (bit-exact),
+// entered and left with a 20 ms crossfade; drive and balance are smoothed linearly over 20 ms, the Tone in log over
+// 20 ms, the Auto Gain multiplicatively over 20 ms; a mode change crossfades over 20 ms (a further change waits for
+// it). prepare() allocates; the other calls do not.
 class Drive
 {
 public:
