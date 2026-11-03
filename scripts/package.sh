@@ -13,6 +13,10 @@ name=$(ident SUBGEN_PRODUCT_NAME)
 vendor=$(ident SUBGEN_VENDOR)
 bundle=$(ident SUBGEN_BUNDLE_ID)
 version=$(tr -d '[:space:]' < VERSION)
+# they go into paths a root script removes: plain names only, or no package
+for v in "$name" "$vendor" "$bundle" "$version"; do
+    [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "not a plain name in ProductIdentity.cmake or VERSION: '$v'" >&2; exit 2; }
+done
 artefacts=
 for config in Release RelWithDebInfo Debug MinSizeRel; do
     if [ -d "$build/SubGen_artefacts/$config" ]; then
