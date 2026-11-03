@@ -141,7 +141,8 @@ jobs:
           echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
             | sudo tee /etc/apt/sources.list.d/llvm-20.list
           sudo apt-get update
-          sudo apt-get install -y clang-20 libclang-rt-20-dev
+          # JUCE builds juceaide while configuring; on Linux its juce_graphics needs FreeType and fontconfig
+          sudo apt-get install -y clang-20 libclang-rt-20-dev libfreetype-dev libfontconfig1-dev
       - name: Build subgen_dsp_tests with -fsanitize=realtime
         run: |
           cmake -S . -B build/rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
