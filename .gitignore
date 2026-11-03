@@ -6,3 +6,4 @@ renders/
 build/
 .cache/
 tools/bin/
+dist/

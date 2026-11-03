@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- The macOS installer (SPEC_BUILD_RELEASE §4.1): scripts/package.sh fills in @NAME@, @VERSION@ and @BUNDLE@. -->
+<installer-gui-script minSpecVersion="2">
+    <title>@NAME@ @VERSION@</title>
+    <license file="LICENSE.txt"/>
+    <readme file="README.txt"/>
+    <allowed-os-versions>
+        <os-version min="11.0"/>
+    </allowed-os-versions>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <choices-outline>
+        <line choice="vst3"/>
+        <line choice="au"/>
+        <line choice="support"/>
+    </choices-outline>
+    <choice id="vst3" title="VST3" description="The VST3 plug-in, in /Library/Audio/Plug-Ins/VST3." start_selected="true">
+        <pkg-ref id="@BUNDLE@.vst3"/>
+    </choice>
+    <choice id="au" title="Audio Unit"
+            description="The Audio Unit, in /Library/Audio/Plug-Ins/Components (Logic Pro, GarageBand)." start_selected="true">
+        <pkg-ref id="@BUNDLE@.au"/>
+    </choice>
+    <choice id="support" title="Uninstaller" description="The uninstall script, in /Library/Application Support."
+            visible="false" start_selected="true">
+        <pkg-ref id="@BUNDLE@.support"/>
+    </choice>
+    <pkg-ref id="@BUNDLE@.vst3" version="@VERSION@" onConclusion="none">@NAME@-VST3.pkg</pkg-ref>
+    <pkg-ref id="@BUNDLE@.au" version="@VERSION@" onConclusion="none">@NAME@-AU.pkg</pkg-ref>
+    <pkg-ref id="@BUNDLE@.support" version="@VERSION@" onConclusion="none">@NAME@-Support.pkg</pkg-ref>
+</installer-gui-script>
