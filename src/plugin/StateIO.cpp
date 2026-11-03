@@ -12,7 +12,7 @@ namespace subgen::plugin
 {
 namespace
 {
-constexpr size_t kMaxStateBytes = 1 << 20; // unpacked; a v1 state is about 8 KB
+constexpr size_t kMaxStateBytes = size_t{1} << 20; // unpacked; a v1 state is about 8 KB
 constexpr int kMaxDepth = 8;               // a v1 state nests 2 deep; JUCE's parser recurses once per level
 constexpr int kMaxText = 256;              // the extra state's strings
 

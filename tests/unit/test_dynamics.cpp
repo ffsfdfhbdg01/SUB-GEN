@@ -127,13 +127,13 @@ double onsetSplatterDb(Detector detector, double attackMs)
     const auto x = concat({std::vector<double>(24000, 0.0), sig::sine(40.0, kFs, 1.0, -6.0)});
     const auto y = runComp(x, comp(-30.0, 4.0, 0.0, attackMs, 100.0, detector, 40.0)).out;
     const size_t len = static_cast<size_t>(0.08 * kFs);
-    std::vector<double> seg(1 << 16, 0.0);
+    std::vector<double> seg(size_t{1} << 16, 0.0);
     for (size_t i = 0; i < len; ++i) // numpy.hanning
         seg[i] = y[24000 + i] * (0.5 + 0.5 * std::cos(std::numbers::pi * (2.0 * static_cast<double>(i) + 1.0 -
                                                                          static_cast<double>(len)) /
                                                       static_cast<double>(len - 1)));
     dsp::RealFft fft(16);
-    std::vector<std::complex<double>> spec((1 << 16) / 2 + 1);
+    std::vector<std::complex<double>> spec((size_t{1} << 16) / 2 + 1);
     fft.forward(seg.data(), spec.data());
     double all = 0.0;
     double above = 0.0;

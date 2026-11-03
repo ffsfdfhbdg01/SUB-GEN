@@ -74,7 +74,7 @@ void ComplexFft::transform(std::complex<double>* data, bool inverse) const
 
 RealFft::RealFft(int order)
     : fft(order)
-    , scratch(static_cast<size_t>(1 << order))
+    , scratch(size_t{1} << order)
 {
     assert(order >= 1);
 }

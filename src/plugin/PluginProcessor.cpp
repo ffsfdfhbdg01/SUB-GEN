@@ -585,8 +585,8 @@ void SubGenProcessor::requestAutoAlign()
 {
     if (alignJob != nullptr && !alignJob->finished.wait(0.0))
         return; // one analysis at a time
-    std::vector<double> dry, sub;
-    capture.snapshot(dry, sub); // lock-free against the audio thread
+    std::vector<double> dryCopy, subCopy;
+    capture.snapshot(dryCopy, subCopy); // lock-free against the audio thread
     params::ParamSnapshot s;
     view.read(s);
     params::sanitise(s);
@@ -600,7 +600,7 @@ void SubGenProcessor::requestAutoAlign()
                                                            .withThreadName("SUB-GEN Auto Align")
                                                            .withNumberOfThreads(1)
                                                            .withDesiredThreadPriority(juce::Thread::Priority::low));
-    alignPool->addJob([job, dry = std::move(dry), sub = std::move(sub), lo, hi, rate, objective] {
+    alignPool->addJob([job, dry = std::move(dryCopy), sub = std::move(subCopy), lo, hi, rate, objective] {
         // SPEC §8.B: S1 through [range_lo/2, range_hi]; the sub through the same band, so their phases stay as at the output
         job->result = analysis::autoAlign(analysis::zeroPhaseBand(dry, rate, 0.5 * lo, hi),
                                           analysis::zeroPhaseBand(sub, rate, 0.5 * lo, hi), rate, lo, hi, objective);

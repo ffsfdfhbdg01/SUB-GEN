@@ -272,8 +272,8 @@ TEST_CASE("T-SRC-03 Max switches with 1.5 dB hysteresis and a 30 ms crossfade wi
     std::vector<double> right = sig::sine(70.0, kFs, 3.0, -12.0);
     auto levelAt = [](size_t i) {
         const double t = static_cast<double>(i) / kFs;
-        auto ramp = [](double from, double to, double t0, double t) {
-            return t < t0 ? from : (t > t0 + 0.01 ? to : from + (to - from) * (t - t0) / 0.01);
+        auto ramp = [](double from, double to, double t0, double at) {
+            return at < t0 ? from : (at > t0 + 0.01 ? to : from + (to - from) * (at - t0) / 0.01);
         };
         return t < 1.0 ? ramp(-2.0, 1.2, 0.99, t) : ramp(1.2, 2.0, 1.99, t);
     };
