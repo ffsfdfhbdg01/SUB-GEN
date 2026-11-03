@@ -48,6 +48,8 @@ std::vector<double> run(Stage& stage, std::vector<double> x, size_t block = 64)
 
 std::vector<double> slice(const std::vector<double>& y, size_t from, size_t to)
 {
+    REQUIRE(from <= to);
+    REQUIRE(to <= y.size()); // a window past the end would read beyond the signal
     return {y.begin() + static_cast<std::ptrdiff_t>(from), y.begin() + static_cast<std::ptrdiff_t>(to)};
 }
 
@@ -206,7 +208,7 @@ TEST_CASE("Drive Pre/Post-Comp switch crossfades without clicks", "[subchain]")
     // the steady Pre- and Post-Comp chains: right after the switch the output is still the Pre-Comp one (the 20 ms
     // crossfade has barely begun; a hard switch: -31 dB), and the incoming pair, warmed up on 50 ms of history, soon
     // matches the Post-Comp chain (a cold start: -23 dB at 100-200 ms with this slow compressor).
-    const auto x = sig::sine(55.0, kFs, 1.0, -12.0);
+    const auto x = sig::sine(55.0, kFs, 1.2, -12.0); // the switch at 0.5 s, read until 0.5 s after it
     auto p = SubChainParams{};
     p.drive.drivePct = 50.0;
     p.comp.on = true;

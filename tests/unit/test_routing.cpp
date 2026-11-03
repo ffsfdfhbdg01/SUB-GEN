@@ -134,7 +134,7 @@ double maxFirstDifference(const std::vector<double>& y, size_t from, size_t to)
 }
 } // namespace
 
-TEST_CASE("supported layouts and pairs follow SPEC_IO_UI §2", "[routing]")
+TEST_CASE("supported layouts and pairs follow SPEC_IO_UI section 2", "[routing]")
 {
     for (const auto& set : {Set::mono(), Set::stereo(), Set::createLCR(), Set::createLRS(), Set::createLCRS(), Set::quadraphonic(),
                             Set::create5point0(), Set::create5point1(), Set::create6point0(), Set::create6point1(),

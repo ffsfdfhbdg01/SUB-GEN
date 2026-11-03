@@ -280,7 +280,7 @@ TEST_CASE("T-INV-04 two runs are bit-identical", "[processor]")
     CHECK(run() == run());
 }
 
-TEST_CASE("T-ALN-01 Auto align_ms equals the analytic sub-path group delay (SPEC §9.2 chain) +- 0.1 ms, clamped to 0-40 "
+TEST_CASE("T-ALN-01 Auto align_ms equals the analytic sub-path group delay (SPEC section 9.2 chain) +- 0.1 ms, clamped to 0-40 "
           "ms; default chain at f_sub1 30/40/50/80 Hz: 34.8/24.1/19.8/12.2 ms",
           "[processor]")
 {
