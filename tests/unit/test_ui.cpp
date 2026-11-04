@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <map>
 #include <set>
 
@@ -87,7 +86,8 @@ TEST_CASE("The analyser reads a full-scale sine at 0 dB where it is", "[ui][spec
     ui::Spectrum spectrum;
     spectrum.prepare(fs);
     const auto x = sine(50.0, 0.5, fs, 3 * ui::Spectrum::kSize);
-    std::vector<float> f(x.begin(), x.end());
+    std::vector<float> f(x.size());
+    std::transform(x.begin(), x.end(), f.begin(), [](double v) { return static_cast<float>(v); });
     spectrum.push(f.data(), static_cast<int>(f.size()));
     REQUIRE(spectrum.consumeUpdate());
     CHECK_FALSE(spectrum.consumeUpdate());
@@ -262,8 +262,8 @@ TEST_CASE("The editor opens at its size, scales, and paints every page", "[ui][e
 // Pictures of the editor for a person to look at: SUBGEN_UI_SNAPSHOT_DIR=<dir> subgen_plugin_tests "[.snapshot]"
 TEST_CASE("Editor snapshots", "[.snapshot]")
 {
-    const char* dir = std::getenv("SUBGEN_UI_SNAPSHOT_DIR");
-    REQUIRE(dir != nullptr);
+    const auto dir = juce::SystemStats::getEnvironmentVariable("SUBGEN_UI_SNAPSHOT_DIR", {});
+    REQUIRE(dir.isNotEmpty());
     const juce::ScopedJuceInitialiser_GUI gui;
     auto p = subgen::test::makeProcessor(subgen::test::Layout{}, 48000.0, 512, [](auto& proc) {
         subgen::test::setParam(proc, "drive", 46.0f);
