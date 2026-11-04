@@ -1,11 +1,14 @@
-# SUB-GEN
+# SAM SUB GEN
 
 A subharmonic generator and sub-bass enhancer plug-in (VST3, AU; AAX built in CI only) for macOS (universal) and
 Windows x64. It derives a sub an octave or two below the source with one of five engines (Divide, Track, Trigger,
 Harmonic, Hybrid), shapes it with a dedicated sub chain and routes it to stereo, surround or the LFE channel.
 
-**Status:** in development (Phase 3: plug-in core). There is no release yet; the specification is in
-[docs/SPEC.md](docs/SPEC.md) (in Polish).
+**Status:** in development; development previews with installers are on the
+[releases page](https://github.com/ffsfdfhbdg01/SUB-GEN/releases). The specification is in
+[docs/SPEC.md](docs/SPEC.md) (in Polish). The repository, files and bundles keep the working name SUB-GEN.
+
+![The editor](docs/img/ui_main.png)
 
 ## Building
 

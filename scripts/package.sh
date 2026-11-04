@@ -10,6 +10,7 @@ build=${1:-build/release}
 out=${2:-dist}
 ident() { sed -n "s/^set($1 \"\(.*\)\")$/\1/p" cmake/ProductIdentity.cmake; }
 name=$(ident SUBGEN_PRODUCT_NAME)
+display=$(ident SUBGEN_DISPLAY_NAME)
 vendor=$(ident SUBGEN_VENDOR)
 bundle=$(ident SUBGEN_BUNDLE_ID)
 version=$(tr -d '[:space:]' < VERSION)
@@ -17,6 +18,7 @@ version=$(tr -d '[:space:]' < VERSION)
 for v in "$name" "$vendor" "$bundle" "$version"; do
     [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "not a plain name in ProductIdentity.cmake or VERSION: '$v'" >&2; exit 2; }
 done
+[[ "$display" =~ ^[A-Za-z0-9._\ -]+$ ]] || { echo "not a plain display name in ProductIdentity.cmake: '$display'" >&2; exit 2; }
 artefacts=
 for config in Release RelWithDebInfo Debug MinSizeRel; do
     if [ -d "$build/SubGen_artefacts/$config" ]; then
@@ -28,7 +30,7 @@ done
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-fill() { sed -e "s|@NAME@|$name|g" -e "s|@VENDOR@|$vendor|g" -e "s|@BUNDLE@|$bundle|g" -e "s|@VERSION@|$version|g" "$1"; }
+fill() { sed -e "s|@DISPLAY@|$display|g" -e "s|@NAME@|$name|g" -e "s|@VENDOR@|$vendor|g" -e "s|@BUNDLE@|$bundle|g" -e "s|@VERSION@|$version|g" "$1"; }
 
 # one component package per payload; a bundle is not relocatable, so an update never lands in a copy elsewhere
 component() { # id root install-location output [scripts]

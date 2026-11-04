@@ -319,8 +319,8 @@ ParamControl* SubGenEditor::control(ParamId id)
 void SubGenEditor::layoutMain()
 {
     content.setBounds(0, 0, kEditorWidth, kEditorHeight);
-    undoButton.setBounds(132, 7, 26, 26);
-    redoButton.setBounds(160, 7, 26, 26);
+    undoButton.setBounds(170, 7, 26, 26);
+    redoButton.setBounds(198, 7, 26, 26);
     quality->setBounds(668, 7, 174, 26);
     scaleButton.setBounds(852, 7, 62, 26);
     power->setBounds(956, 4, 32, 32);
@@ -639,16 +639,16 @@ void SubGenEditor::Content::paint(juce::Graphics& g)
         g.drawLine(x0, y0 + 4.0f, x0 + 18.0f, y0 + 4.0f, 1.2f);
         g.setColour(colours::text);
         g.setFont(uiFont(16.0f, true));
-        g.drawText("SUB-GEN", juce::Rectangle<int>(42, 0, 84, kTopBar), juce::Justification::centredLeft);
+        g.drawText(JucePlugin_Name, juce::Rectangle<int>(42, 0, 124, kTopBar), juce::Justification::centredLeft);
     }
     const auto extra = e.proc.extraState();
     g.setFont(uiFont(13.0f));
     g.setColour(colours::text);
-    g.drawText(extra.presetName, juce::Rectangle<int>(204, 0, 150, kTopBar), juce::Justification::centredLeft);
+    g.drawText(extra.presetName, juce::Rectangle<int>(240, 0, 120, kTopBar), juce::Justification::centredLeft);
     g.setColour(colours::textFaint);
     g.setFont(uiFont(11.5f));
     const float presetW = juce::GlyphArrangement::getStringWidth(uiFont(13.0f), extra.presetName);
-    g.drawText(extra.presetCategory, juce::Rectangle<int>(204 + juce::roundToInt(presetW) + 8, 0, 120, kTopBar),
+    g.drawText(extra.presetCategory, juce::Rectangle<int>(240 + juce::roundToInt(presetW) + 8, 0, 100, kTopBar),
                juce::Justification::centredLeft);
     if (e.warning.isNotEmpty())
     {

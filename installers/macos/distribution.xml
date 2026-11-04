@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<!-- The macOS installer (SPEC_BUILD_RELEASE §4.1): scripts/package.sh fills in @NAME@, @VERSION@ and @BUNDLE@. -->
+<!-- The macOS installer (SPEC_BUILD_RELEASE §4.1): scripts/package.sh fills in @DISPLAY@, @NAME@, @VERSION@ and @BUNDLE@. -->
 <installer-gui-script minSpecVersion="2">
-    <title>@NAME@ @VERSION@</title>
+    <title>@DISPLAY@ @VERSION@</title>
     <license file="LICENSE.txt"/>
     <readme file="README.txt"/>
     <allowed-os-versions>

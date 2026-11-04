@@ -71,7 +71,7 @@ private:
     Icon icon;
 };
 
-// The SUB-GEN editor (docs/superpowers/specs/2026-11-04-subgen-ui-design.md): the top bar, the analyser and meters,
+// The SAM SUB GEN editor (docs/superpowers/specs/2026-11-04-subgen-ui-design.md): the top bar, the analyser and meters,
 // the four main sections, the Advanced drawer. 1000 x 620 at 100 %, scaled 75-200 % at a fixed aspect ratio.
 class SubGenEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
