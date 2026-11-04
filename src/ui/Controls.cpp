@@ -423,7 +423,7 @@ int Segmented::segmentAt(juce::Point<float> p) const
     const auto bar = barBounds();
     if (!bar.contains(p) || labels.isEmpty())
         return -1;
-    return juce::jlimit(0, labels.size() - 1, static_cast<int>((p.x - bar.getX()) / bar.getWidth() * labels.size()));
+    return juce::jlimit(0, labels.size() - 1, static_cast<int>((p.x - bar.getX()) / bar.getWidth() * static_cast<float>(labels.size())));
 }
 
 void Segmented::paint(juce::Graphics& g)
@@ -448,8 +448,7 @@ void Segmented::paint(juce::Graphics& g)
         }
         g.setColour((i == selected ? colours::text : colours::textDim).withMultipliedAlpha(a));
         g.setFont(uiFont(11.5f, i == selected));
-        const auto text = i < shortLabels.size() ? shortLabels[i] : labels[i];
-        g.drawFittedText(text, seg.reduced(2.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.75f);
+        g.drawFittedText(labels[i], seg.reduced(2.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.75f);
     }
     if (hasKeyboardFocus(false))
     {

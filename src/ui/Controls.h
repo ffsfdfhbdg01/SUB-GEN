@@ -124,13 +124,12 @@ public:
     void mouseDown(const juce::MouseEvent& e) override;
     bool keyPressed(const juce::KeyPress& key) override;
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
-    void setShortLabels(const juce::StringArray& labels) { shortLabels = labels; repaint(); }
 
 private:
     juce::Rectangle<float> barBounds() const;
     int segmentAt(juce::Point<float> p) const;
 
-    juce::StringArray labels, shortLabels;
+    juce::StringArray labels;
     bool withName;
 };
 
