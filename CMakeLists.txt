@@ -59,7 +59,7 @@ if(SUBGEN_BUILD_PLUGIN)
         VST3_CATEGORIES Fx
         COPY_PLUGIN_AFTER_BUILD TRUE)
 
-    file(GLOB_RECURSE subgen_plugin_sources CONFIGURE_DEPENDS src/params/*.cpp src/plugin/*.cpp)
+    file(GLOB_RECURSE subgen_plugin_sources CONFIGURE_DEPENDS src/params/*.cpp src/plugin/*.cpp src/ui/*.cpp)
     if(subgen_plugin_sources)
         target_sources(SubGen PRIVATE ${subgen_plugin_sources})
     endif()

@@ -19,7 +19,9 @@
 #include "engines/SourceBand.h"
 #include "params/Parameters.h"
 #include "plugin/Latency.h"
+#include "plugin/ParamUndo.h"
 #include "plugin/StateIO.h"
+#include "plugin/UiFeed.h"
 #include "plugin/Warnings.h"
 #include "routing/ChannelMap.h"
 #include "routing/Correlation.h"
@@ -101,6 +103,11 @@ public:
     void requestAutoAlign();
     bool waitForAutoAlign(int timeoutMs) const; // off the audio thread: the analysis asked for has finished
     analysis::AlignResult lastAutoAlign() const;
+    int autoAlignCount() const { return alignResults; } // results applied so far (message thread)
+
+    // The editor's view of the audio (written only while an editor is open) and its undo history.
+    UiFeed& uiFeed() { return feed; }
+    ParamUndo& paramUndo() { return undoHistory; }
 
 private:
     static constexpr int kSubBlock = 64;
@@ -130,6 +137,7 @@ private:
     int desiredLatency() const;
 
     juce::AudioProcessorValueTreeState state;
+    ParamUndo undoHistory{state};
     params::ParamView view;
     params::ParamSnapshot raw;      // as read
     params::ParamSnapshot snapshot; // sanitised
@@ -193,9 +201,14 @@ private:
     std::unique_ptr<juce::ThreadPool> alignPool; // made by the first request
     std::shared_ptr<AlignJob> alignJob;          // the last request's (message thread)
 
+    // the editor's feed: the Front outputs' mean and the outputs' peak per sample of a sub-block
+    UiFeed feed;
+    std::array<double, kSubBlock> uiSum{}, uiPeak{};
+
     mutable juce::CriticalSection extraLock;
     ExtraState extra;
     analysis::AlignResult alignResult;
+    int alignResults = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SubGenProcessor)
 };

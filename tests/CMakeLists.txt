@@ -7,7 +7,7 @@ include(Catch)
 
 # Tests of the plug-in layer (processor, parameters, state) link the plug-in's shared code; all others link
 # subgen_dsp only.
-set(plugin_test_names test_smoke test_params test_processor test_layouts test_state)
+set(plugin_test_names test_smoke test_params test_processor test_layouts test_state test_ui)
 file(GLOB unit_tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/unit/test_*.cpp")
 set(dsp_test_sources)
 set(plugin_test_sources)

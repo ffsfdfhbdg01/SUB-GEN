@@ -52,6 +52,9 @@ public:
     int oversamplingLatencySamples() const { return dynamics[active].drive.latencySamples(); } // L_os
     int latencyAfterChainA() const { return limiter.latencySamples(); } // chain A's sub reaches the output this late
     bool nanEvent() const { return nanCaught; } // the last process() call caught a NaN or Inf
+    // the gain the compressor and the limiter applied last, in dB (<= 0; the compressor's also while it is off)
+    double compGainDb() const { return dynamics[active].comp.gainReductionDb(); }
+    double limiterGainDb() const { return limiter.gainReductionDb(); }
     std::span<const double> afterChainA() const { return {chainA.data(), lastBlock}; }
     // The host renders offline (isNonRealtime): Linear Phase waits for each kernel.
     void setNonRealtime(bool offline) { filters.setNonRealtime(offline); }

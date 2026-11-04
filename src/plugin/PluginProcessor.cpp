@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "plugin/PluginProcessor.h"
 
+#include "ui/Editor.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -443,6 +445,28 @@ void SubGenProcessor::processSubBlock(int offset, int n)
         }
     }
     updateMeters(offset, n, streams);
+    if (feed.editorOpen())
+    {
+        int front = 0;
+        for (int j = 0; j < outChannels; ++j)
+            front += outMap.ch[static_cast<size_t>(j)].cls == routing::ChannelClass::Front ? 1 : 0;
+        for (int i = 0; i < n; ++i)
+        {
+            double sum = 0.0, peak = 0.0;
+            for (int j = 0; j < outChannels; ++j)
+            {
+                const double y = outPtr[static_cast<size_t>(j)][i];
+                if (front == 0 || outMap.ch[static_cast<size_t>(j)].cls == routing::ChannelClass::Front)
+                    sum += y;
+                peak = std::max(peak, std::abs(y));
+            }
+            const int count = front > 0 ? front : std::max(1, outChannels);
+            uiSum[static_cast<size_t>(i)] = sum / count;
+            uiPeak[static_cast<size_t>(i)] = peak;
+        }
+        feed.push(sl, s0, std::span<const double>(uiSum).first(len), std::span<const double>(uiPeak).first(len));
+        feed.setGainReduction(-chains[0].compGainDb(), -chains[0].limiterGainDb());
+    }
 
     // a new latency (quality, filt_phase, align_ms): mute, switch at silence, come back; quality needs the message thread
     const int desired = desiredLatency();
@@ -630,6 +654,7 @@ void SubGenProcessor::applyAutoAlignResult(const analysis::AlignResult& r)
         extra.alignRotationDeg = r.rotationDeg;
         extra.alignConfidenceDb = r.confidenceDb;
     }
+    ++alignResults;
     // without a clear optimum (SPEC_BUILD_RELEASE R8: the confidence criterion) or with align_lock the parameters stay
     if (!r.clearOptimum || state.getRawParameterValue("align_lock")->load() >= 0.5f)
         return;
@@ -668,7 +693,7 @@ bool SubGenProcessor::waitForLinearPhase(int timeoutMs) const
     return chains[0].waitForLinearPhase(timeoutMs) && chains[1].waitForLinearPhase(timeoutMs);
 }
 
-juce::AudioProcessorEditor* SubGenProcessor::createEditor() { return new juce::GenericAudioProcessorEditor(*this); }
+juce::AudioProcessorEditor* SubGenProcessor::createEditor() { return new ui::SubGenEditor(*this); }
 
 const juce::String SubGenProcessor::getName() const { return JucePlugin_Name; }
 
