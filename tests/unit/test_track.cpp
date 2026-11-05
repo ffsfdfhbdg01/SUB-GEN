@@ -450,3 +450,45 @@ TEST_CASE("TRACK process does not allocate and does not depend on the block size
         CHECK(a == d);
     }
 }
+
+namespace
+{
+// a legato bass line: saw-like notes with 8 harmonics, each straight after the last (no gap for a note start)
+std::vector<double> legatoLine(const std::vector<double>& notesHz, double noteSeconds, double fs = kFs)
+{
+    std::vector<double> x;
+    double phase = 0.0;
+    for (double hz : notesHz)
+        for (size_t i = 0; i < static_cast<size_t>(noteSeconds * fs); ++i)
+        {
+            phase += 2.0 * std::numbers::pi * hz / fs;
+            double v = 0.0;
+            for (int k = 1; k <= 8; ++k)
+                v += std::sin(k * phase) / k;
+            x.push_back(0.25 * v);
+        }
+    return x;
+}
+} // namespace
+
+TEST_CASE("Locked follows a legato bass line: Sub -1 at f0/2 within half a semitone once each note settles", "[track]")
+{
+    const std::vector<double> notes{73.4, 49.0, 41.2, 55.0, 73.4};
+    const double noteSeconds = 0.5;
+    const auto r = runTrack(legatoLine(notes, noteSeconds), Quality::Mix, withPhase(PhaseGen::Locked));
+    for (size_t k = 0; k < notes.size(); ++k)
+    {
+        INFO("note " << k << " at " << notes[k] << " Hz");
+        int off = 0, total = 0;
+        // the last 300 ms of the note
+        for (size_t i = static_cast<size_t>((k * noteSeconds + 0.2) * kFs); i < static_cast<size_t>((k + 1) * noteSeconds * kFs);
+             i += 64)
+        {
+            ++total;
+            const double f = r.probe[i].subFreq;
+            if (!(f > 0.0) || std::abs(12.0 * std::log2(f / (notes[k] / 2.0))) > 0.5)
+                ++off;
+        }
+        CHECK(off <= total / 20);
+    }
+}

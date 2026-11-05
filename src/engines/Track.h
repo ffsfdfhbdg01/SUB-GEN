@@ -114,6 +114,7 @@ private:
     std::int64_t pendingBegin = -1; // a note start not yet reached by the delayed axis
     std::int64_t noteBegin = -1;    // the current note's start
     bool seedPending = false;
+    int mismatchSamples = 0; // the frames' pitch has been a semitone or more off the loop's for this long
     bool pllSeeded = false;
     double pllA2 = 0.0;
     double lockCoeff = 0.0;

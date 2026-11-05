@@ -90,6 +90,7 @@ void Track::reset()
     noteBegin = -1;
     seedPending = false;
     pllSeeded = false;
+    mismatchSamples = 0;
     pllA2 = 0.0;
     lockError1 = lockError2 = 0.0;
     lockLost = false;
@@ -269,7 +270,21 @@ double Track::processSample(double source, double key)
                 seedPll(m, cur, latestF0);
                 seedPending = false;
                 pllSeeded = true;
+                mismatchSamples = 0;
             }
+            // a legato note change starts no note: once the frames hold a pitch a semitone or more off the loop's for
+            // 20 ms, the loop takes it (beyond the 20 Hz loop's pull-in range otherwise)
+            else if (valid && pllSeeded && std::abs(std::log(latestF0 / std::max(1.0, pll.frequencyHz()))) >= kSemitone)
+            {
+                if (++mismatchSamples >= wideHold)
+                {
+                    pll.seed(latestF0, pll.phase()); // the new frequency; the loop keeps its phase and pulls it in
+                    wideUntil = std::max(wideUntil, cur + wideHold);
+                    mismatchSamples = 0;
+                }
+            }
+            else
+                mismatchSamples = 0;
             const bool w = cur < wideUntil;
             if (w != wide)
             {
