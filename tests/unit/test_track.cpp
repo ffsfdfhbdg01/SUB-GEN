@@ -481,7 +481,7 @@ TEST_CASE("Locked follows a legato bass line: Sub -1 at f0/2 within half a semit
         INFO("note " << k << " at " << notes[k] << " Hz");
         int off = 0, total = 0;
         // the last 300 ms of the note
-        for (size_t i = static_cast<size_t>((k * noteSeconds + 0.2) * kFs); i < static_cast<size_t>((k + 1) * noteSeconds * kFs);
+        for (size_t i = static_cast<size_t>((static_cast<double>(k) * noteSeconds + 0.2) * kFs); i < static_cast<size_t>(static_cast<double>(k + 1) * noteSeconds * kFs);
              i += 64)
         {
             ++total;
@@ -491,4 +491,82 @@ TEST_CASE("Locked follows a legato bass line: Sub -1 at f0/2 within half a semit
         }
         CHECK(off <= total / 20);
     }
+}
+
+namespace
+{
+// the legato line with a kick every 0.5 s (a 120 -> 50 Hz sweep), off the notes' starts
+std::vector<double> lineWithKicks(const std::vector<double>& notesHz, double noteSeconds, double fs = kFs)
+{
+    auto x = legatoLine(notesHz, noteSeconds, fs);
+    for (double s = 0.25; s < static_cast<double>(x.size()) / fs; s += 0.5)
+    {
+        double phase = 0.0;
+        for (size_t i = static_cast<size_t>(s * fs); i < std::min(x.size(), static_cast<size_t>((s + 0.4) * fs)); ++i)
+        {
+            const double t = static_cast<double>(i) / fs - s;
+            phase += 2.0 * std::numbers::pi * (50.0 + 70.0 * std::exp(-t / 0.03)) / fs;
+            x[i] += 0.7 * std::exp(-t / 0.12) * std::sin(phase);
+        }
+    }
+    return x;
+}
+
+EngineControl holding(PhaseGen mode, bool hold)
+{
+    auto c = withPhase(mode);
+    c.pitchHold = hold;
+    return c;
+}
+
+// the share of samples, from 100 ms into each note to its end, where the sub sounds with its gate open
+double openShare(const Run& r, size_t notes, double noteSeconds)
+{
+    size_t open = 0, total = 0;
+    for (size_t k = 0; k < notes; ++k)
+        for (size_t i = static_cast<size_t>((static_cast<double>(k) * noteSeconds + 0.1) * kFs); i < static_cast<size_t>(static_cast<double>(k + 1) * noteSeconds * kFs); ++i)
+        {
+            ++total;
+            open += r.probe[i].gate > 0.5 ? 1 : 0;
+        }
+    return static_cast<double>(open) / static_cast<double>(total);
+}
+} // namespace
+
+TEST_CASE("Hold pitch keeps the sub through a kick over the bass, in Locked and Free", "[track]")
+{
+    const std::vector<double> notes{73.4, 49.0, 41.2, 55.0, 73.4, 49.0};
+    const auto x = lineWithKicks(notes, 0.5);
+    for (auto mode : {PhaseGen::Locked, PhaseGen::Free})
+    {
+        INFO("phase mode " << static_cast<int>(mode));
+        const auto gated = runTrack(x, Quality::Mix, holding(mode, false));
+        const auto held = runTrack(x, Quality::Mix, holding(mode, true));
+        CHECK(openShare(gated, notes.size(), 0.5) < 0.9); // the case Hold is for
+        CHECK(openShare(held, notes.size(), 0.5) >= 0.98);
+        // Locked holds the note's pitch: Sub -1 within a semitone of f0/2 on 90 % of the open samples (Free follows
+        // every confident frame, the kick's sweep among them)
+        if (mode != PhaseGen::Locked)
+            continue;
+        size_t near = 0, open = 0;
+        for (size_t k = 0; k < notes.size(); ++k)
+            for (size_t i = static_cast<size_t>((static_cast<double>(k) * 0.5 + 0.15) * kFs); i < static_cast<size_t>(static_cast<double>(k + 1) * 0.5 * kFs); ++i)
+                if (held.probe[i].gate > 0.5)
+                {
+                    ++open;
+                    near += std::abs(12.0 * std::log2(held.probe[i].subFreq / (notes[k] / 2.0))) <= 1.0 ? 1 : 0;
+                }
+        CHECK(static_cast<double>(near) >= 0.9 * static_cast<double>(open));
+    }
+}
+
+TEST_CASE("Hold pitch does not drone: the sub ends with the source", "[track]")
+{
+    auto x = legatoLine({55.0}, 0.6);
+    x.resize(x.size() + static_cast<size_t>(0.6 * kFs), 0.0);
+    const auto r = runTrack(x, Quality::Mix, holding(PhaseGen::Locked, true));
+    double after = 0.0; // the loudest sub sample from 300 ms after the source stopped
+    for (size_t i = static_cast<size_t>(0.9 * kFs); i < r.out.size(); ++i)
+        after = std::max(after, std::abs(r.out[i]));
+    CHECK(after < 1e-3);
 }

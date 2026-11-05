@@ -20,10 +20,10 @@ class TestGenParams(unittest.TestCase):
         self.specs = gen_params.parse((REPO / "docs" / "PARAMETERS.md").read_text(encoding="utf-8"))
         self.by_id = {s.id: s for s in self.specs}
 
-    def test_parses_141_ids(self):
+    def test_parses_144_ids(self):
         ids = [s.id for s in self.specs]
-        self.assertEqual(len(ids), 141)
-        self.assertEqual(len(set(ids)), 141)
+        self.assertEqual(len(ids), 144)
+        self.assertEqual(len(set(ids)), 144)
         self.assertTrue(all(i.isascii() and len(i) <= 24 for i in ids))
         self.assertEqual(ids[:3], ["bypass", "quality", "out_trim"])
         # the EQ pattern expands band by band, with the band defaults

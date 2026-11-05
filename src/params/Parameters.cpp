@@ -25,9 +25,11 @@ juce::StringArray labelsOf(const ParamSpec& s)
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
-    for (const auto& s : kParamSpecs)
+    for (size_t i = 0; i < kParamSpecs.size(); ++i)
     {
-        const juce::ParameterID id{s.id, 1};
+        const auto& s = kParamSpecs[i];
+        const auto* added = addedParam(static_cast<ParamId>(i));
+        const juce::ParameterID id{s.id, added != nullptr ? added->versionHint : 1};
         const juce::String name{s.name};
         switch (s.type)
         {

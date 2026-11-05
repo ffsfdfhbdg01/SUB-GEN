@@ -27,6 +27,9 @@ inline float getParam(const plugin::SubGenProcessor& p, const char* id)
     return p.parameters().getRawParameterValue(id)->load();
 }
 
+// Weight off (on by default since 0.2): the dry stays bit-exact, for tests of routing, latency and the sum
+inline void noWeight(plugin::SubGenProcessor& p) { setParam(p, "weight_amount", 0.0f); }
+
 struct Layout
 {
     juce::AudioChannelSet in = juce::AudioChannelSet::stereo();

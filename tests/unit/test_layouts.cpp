@@ -70,7 +70,8 @@ TEST_CASE("T-IO-01 SIG-15 on every supported layout: dry bit-exact, sub only whe
     {
         INFO(set.getDescription());
         const auto in = sig15(set, kFs, 0.6);
-        auto off = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "sub_level", -60.0f); });
+        auto off = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "sub_level", -60.0f); });
         REQUIRE(off != nullptr);
         const auto dry = render(*off, in);
         const auto latency = static_cast<size_t>(off->getLatencySamples());
@@ -79,7 +80,7 @@ TEST_CASE("T-IO-01 SIG-15 on every supported layout: dry bit-exact, sub only whe
             exact = exact && added(dry[c], in[c], latency) == std::vector<double>(dry[c].size(), 0.0);
         CHECK(exact);
         // with the sub: Auto is LFE with an LFE channel (the sub in LFE alone), else Mono (Front and Center)
-        auto on = makeProcessor({set, set}, kFs, 512);
+        auto on = makeProcessor({set, set}, kFs, 512, noWeight);
         const auto out = render(*on, in);
         const bool lfe = set.getChannelTypes().contains(Set::LFE);
         for (int c = 0; c < set.size(); ++c)
@@ -104,7 +105,7 @@ TEST_CASE("T-IO-03 x.0 -> x.1 pairs: the LFE carries the sub", "[layouts]")
                                   std::pair{Set::create9point0point6(), Set::create9point1point6()}})
     {
         INFO(out.getDescription());
-        auto p = makeProcessor({in, out}, kFs, 512);
+        auto p = makeProcessor({in, out}, kFs, 512, noWeight);
         REQUIRE(p != nullptr);
         const auto x = sig15(in, kFs, 0.6);
         const auto y = render(*p, x);
@@ -128,6 +129,7 @@ TEST_CASE("T-IO-04 leakage into unrouted channels <= -120 dB", "[layouts]")
 {
     const auto set = Set::create7point1point4();
     auto p = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s);
         setParam(s, "out_mode", 3.0f);        // Surround
         setParam(s, "route_height", -60.0f);  // Off
         setParam(s, "route_surround", -60.0f);
@@ -149,6 +151,7 @@ TEST_CASE("T-LFE-02 LFE mode: only the LFE channel carries sub; Wet Only leakage
 {
     const auto set = Set::create5point1();
     auto p = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s);
         setParam(s, "out_mode", 4.0f);
         setParam(s, "wet_only", 1.0f);
     });
@@ -173,6 +176,7 @@ TEST_CASE("T-LFE-03 the LFE ceiling holds on stress signals", "[layouts]")
         {
             INFO("quality " << q);
             auto p = makeProcessor({set, set}, kFs, 512, [&](SubGenProcessor& s) {
+        noWeight(s);
                 setParam(s, "quality", static_cast<float>(q));
                 setParam(s, "lfe_ceiling", -6.0f);
                 setParam(s, "sub_level", 18.0f);
@@ -192,6 +196,7 @@ TEST_CASE("T-LFE-04 bleed level +- 0.1 dB, band <= 120 Hz", "[layouts]")
 {
     const auto set = Set::create5point1();
     auto p = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s);
         setParam(s, "out_mode", 4.0f);
         setParam(s, "lfe_bleed", -20.0f);
         setParam(s, "wet_only", 1.0f);
@@ -212,7 +217,8 @@ TEST_CASE("T-LFE-04 bleed level +- 0.1 dB, band <= 120 Hz", "[layouts]")
 TEST_CASE("T-LFE-05 W-01 and W-05 conditions", "[layouts]")
 {
     // W-01: LFE mode on a layout without LFE behaves as Mono
-    auto stereo = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "out_mode", 4.0f); });
+    auto stereo = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "out_mode", 4.0f); });
     const auto bass = Channels(2, sig::sine(60.0, kFs, 0.6, -12.0));
     const auto y = render(*stereo, bass);
     CHECK(stereo->warnings().has(Warning::NoLfeChannel));
@@ -224,11 +230,13 @@ TEST_CASE("T-LFE-05 W-01 and W-05 conditions", "[layouts]")
         if (set.getTypeOfChannel(c) != Set::centre)
             for (auto& v : quietFront[static_cast<size_t>(c)])
                 v *= 0.01; // the bass sits in the centre: the Front pair is quiet in 20-120 Hz
-    auto lost = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "out_mode", 4.0f); });
+    auto lost = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "out_mode", 4.0f); });
     render(*lost, quietFront);
     CHECK(lost->warnings().has(Warning::LfeOnlyContent));
     CHECK_FALSE(lost->warnings().has(Warning::NoLfeChannel)); // LFE mode on a layout with LFE
     auto bled = makeProcessor({set, set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s);
         setParam(s, "out_mode", 4.0f);
         setParam(s, "lfe_bleed", -12.0f);
     });
@@ -238,7 +246,7 @@ TEST_CASE("T-LFE-05 W-01 and W-05 conditions", "[layouts]")
 
 TEST_CASE("an unusable layout forced on the processor passes audio through with W-12", "[layouts]")
 {
-    auto p = makeProcessor<ForcedLayout>({Set::ambisonic(1), Set::ambisonic(1)}, kFs, 512);
+    auto p = makeProcessor<ForcedLayout>({Set::ambisonic(1), Set::ambisonic(1)}, kFs, 512, noWeight);
     REQUIRE(p != nullptr);
     CHECK(p->warnings().has(Warning::LayoutNotSupported));
     CHECK(p->getLatencySamples() == 0);
@@ -251,18 +259,21 @@ TEST_CASE("out_mode LFE without an LFE channel behaves as Mono with W-01; sc_use
           "[layouts]")
 {
     const auto bass = sig::sine(60.0, kFs, 0.6, -12.0);
-    auto lfe = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "out_mode", 4.0f); });
-    auto mono = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "out_mode", 1.0f); });
+    auto lfe = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "out_mode", 4.0f); });
+    auto mono = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "out_mode", 1.0f); });
     const auto a = render(*lfe, Channels(2, bass));
     const auto b = render(*mono, Channels(2, bass));
     CHECK(lfe->warnings().has(Warning::NoLfeChannel));
     CHECK(a == b);
-    auto detect = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "sc_use", 1.0f); });
-    auto plain = makeProcessor({}, kFs, 512);
+    auto detect = makeProcessor({}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "sc_use", 1.0f); });
+    auto plain = makeProcessor({}, kFs, 512, noWeight);
     const auto c = render(*detect, Channels(2, bass));
     CHECK(detect->warnings().has(Warning::KeyNotConnected));
     CHECK(c == render(*plain, Channels(2, bass)));
-    auto m = makeProcessor({Set::mono(), Set::mono()}, kFs, 512);
+    auto m = makeProcessor({Set::mono(), Set::mono()}, kFs, 512, noWeight);
     REQUIRE(m != nullptr);
     const auto y = render(*m, Channels(1, bass));
     const auto sub = added(y[0], bass, static_cast<size_t>(m->getLatencySamples()));
@@ -272,7 +283,8 @@ TEST_CASE("out_mode LFE without an LFE channel behaves as Mono with W-01; sc_use
 TEST_CASE("mono into 5.1 (SHOULD): the dry only in the Center channel, bit-exact", "[layouts]")
 {
     const auto set = Set::create5point1();
-    auto p = makeProcessor({Set::mono(), set}, kFs, 512, [](SubGenProcessor& s) { setParam(s, "sub_level", -60.0f); });
+    auto p = makeProcessor({Set::mono(), set}, kFs, 512, [](SubGenProcessor& s) {
+        noWeight(s); setParam(s, "sub_level", -60.0f); });
     REQUIRE(p != nullptr);
     const auto x = sig15(Set::mono(), kFs, 0.25)[0];
     const auto y = render(*p, Channels(1, x));

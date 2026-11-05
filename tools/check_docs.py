@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Documentation consistency check (SPEC_BUILD_RELEASE §11).
 
-(a) PARAMETERS.md §2 holds exactly 141 unique parameter IDs once the eqN_* pattern is expanded (N = 1..5);
+(a) PARAMETERS.md §2 holds exactly 144 unique parameter IDs once the eqN_* pattern is expanded (N = 1..5);
 (b) every lower_snake identifier in backticks in SPEC.md, SPEC_IO_UI.md and TEST_PLAN.md is a parameter ID or is
     listed in tools/docs_allowlist.txt (internal signals and quantities, reserved IDs); a pattern such as `route_*`
     or `eqN_freq` must match at least one parameter ID or be listed itself;
@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-EXPECTED_PARAMS = 141
+EXPECTED_PARAMS = 144
 EQ_BANDS = 5
 ID_DOCS = ("SPEC.md", "SPEC_IO_UI.md", "TEST_PLAN.md")
 

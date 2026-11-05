@@ -23,7 +23,7 @@ const std::vector<Group>& mainSections()
         {"Source", {range_lo, range_hi, det_thresh, src_mode}},
         {"Generator", {engine, sub1_level, sub2_level, shape}},
         {"Sub", {drive, drive_mode, sub_level, boost_gain, sub_pol}},
-        {"Output", {sum_mode, dry_level, mix, out_trim, wet_only, out_mode}},
+        {"Output", {sum_mode, dry_level, mix, out_trim, weight_amount, weight_freq, wet_only}},
     };
     return sections;
 }
@@ -38,7 +38,7 @@ const std::vector<Page>& advancedPages()
         {"Engine",
          {{"Pitch", {base_mode, base_freq}},
           {"Envelope", {follow, env_attack, env_release, dynamics, conf_gate}},
-          {"Track", {trk_speed, trk_glide, phase_gen}, kTrack},
+          {"Track", {pitch_hold, phase_gen, trk_speed, trk_glide}, kTrack},
           {"Trigger", {trig_thresh, trig_hold, trig_lockout, trig_retrigger, trig_vel}, kTrigger},
           {"Trigger voice", {trig_f_start, trig_pitch_time, trig_attack, trig_decay, trig_phase}, kTrigger},
           {"Harmonics", {harm_amount, harm_balance, harm_max}, kHarmonic | kHybrid},
@@ -60,7 +60,7 @@ const std::vector<Page>& advancedPages()
           {"Limiter", {lim_on, lim_ceiling, lim_release, lim_tp}},
           {"Phase", {sub_rot, align_obj, align_lock}}}},
         {"Output",
-         {{"Mix", {mix_law, align_ms, sub_width}},
+         {{"Mix", {out_mode, mix_law, align_ms, sub_width}},
           {"Route level", {route_front, route_center, route_surround, route_height, route_lfe}},
           {"Route delay", {route_front_dly, route_center_dly, route_surround_dly, route_height_dly, route_lfe_dly}},
           {"Route polarity", {route_front_pol, route_center_pol, route_surround_pol, route_height_pol, route_lfe_pol}}}},

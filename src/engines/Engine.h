@@ -42,6 +42,7 @@ struct EngineControl
     double trkSpeed = 0.5; // 0..1
     double trkGlideMs = 0.0;
     PhaseGen phaseGen = PhaseGen::Locked;
+    bool pitchHold = false; // the sub keeps the last reliable pitch while the source sounds (pitch_hold)
     // TRIGGER
     double trigThreshDb = -30.0;
     double trigHoldMs = 20.0;

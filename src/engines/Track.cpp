@@ -91,6 +91,7 @@ void Track::reset()
     seedPending = false;
     pllSeeded = false;
     mismatchSamples = 0;
+    heldPllHz = 0.0;
     pllA2 = 0.0;
     lockError1 = lockError2 = 0.0;
     lockLost = false;
@@ -257,13 +258,23 @@ double Track::processSample(double source, double key)
         // fade-in), keeps its last frequency while the gate releases after the track is lost, and stops once the gate
         // has closed.
         const bool valid = latestTracking;
-        gateGain = gate.process(latestConf, false);
+        // Hold pitch: while the source sounds, a sub that has started keeps its gate open and its last reliable pitch
+        // through frames of low confidence (a kick over the bass, a chord); it ends with the source
+        const bool holding = control.pitchHold && sounding && activity.active();
+        gateGain = gate.process(holding ? 1.0 : latestConf, false);
         if (valid)
             sounding = true;
         else if (gateGain < 1e-6)
             sounding = false;
         voice = sounding ? voice + voiceCoeff * (1.0 - voice) : 0.0;
-        if (control.phaseGen == PhaseGen::Locked)
+        if (control.phaseGen == PhaseGen::Locked && holding && !valid && heldPllHz > 0.0)
+        {
+            // the loop would chase what the band holds now: the sub runs on at the held frequency
+            inc1 = std::numbers::pi * heldPllHz / fs;
+            inc2 = 0.5 * inc1;
+            f1 = 0.5 * heldPllHz;
+        }
+        else if (control.phaseGen == PhaseGen::Locked)
         {
             if (valid && (seedPending || !pllSeeded))
             {
@@ -303,6 +314,8 @@ double Track::processSample(double source, double key)
             inc1 = 0.5 * inc;
             inc2 = 0.25 * inc;
             f1 = sounding ? 0.5 * pll.frequencyHz() : 0.0;
+            if (valid)
+                heldPllHz = pll.frequencyHz();
         }
         else if (sounding)
         {

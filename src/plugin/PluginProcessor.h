@@ -11,6 +11,7 @@
 #include "analysis/AutoAlign.h"
 #include "analysis/CaptureBuffer.h"
 #include "chain/SubChain.h"
+#include "chain/Weight.h"
 #include "core/Quality.h"
 #include "dsp/DelayLine.h"
 #include "dsp/Envelope.h"
@@ -166,9 +167,12 @@ private:
     routing::Router router;
     routing::Summation summation;
     std::vector<dsp::DelayLine> dryDelay;
+    std::array<chain::Weight, kMaxChannels> weights; // per output channel, on the dry into the summation
+    bool weightFresh = true;
 
     juce::AudioBuffer<double> inBuffer;  // main input, then the sidechain
-    juce::AudioBuffer<double> dryBuffer; // the delayed dry per output channel
+    juce::AudioBuffer<double> dryBuffer; // the delayed dry per output channel (what bypass gives)
+    juce::AudioBuffer<double> weightedBuffer; // the dry through Weight (what the summation takes)
     juce::AudioBuffer<double> subBuffer; // u per output channel
     juce::AudioBuffer<double> outBuffer;
     std::vector<double> streamL, streamR, sub0, sub1, keyScratch;

@@ -1,7 +1,7 @@
 # SUB-GEN — PARAMETERS (rejestr parametrów v1.0)
 
 Status: projekt Fazy 1 z korektami Fazy 2 (2026-10-20: `align_ms` 0–40 ms, `comp_attack` bez podłogi, Linear Phase tylko dla LP; 2026-10-21 po przeglądzie D8: `comp_detect` domyślnie Peak, `trig_attack` ≥ 0,5 ms, `shape` jako przesuw odcięcia) · Źródło prawdy dla ID, zakresów i wartości domyślnych · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [TEST_PLAN.md](TEST_PLAN.md)
-Liczba parametrów w v1.0: **141** (sprawdzane skryptem spójności; zob. SPEC_BUILD_RELEASE §11).
+Liczba parametrów w v1.0: **144** — 141 z wydania 0.1 i 3 dodane w 0.2 (§2.15) (sprawdzane skryptem spójności; zob. SPEC_BUILD_RELEASE §11).
 
 ## 1. Konwencje
 - **ID:** `lower_snake_case`, ASCII, ≤ 24 znaki. W JUCE: `juce::ParameterID { id, 1 }` (version hint 1 dla wszystkich parametrów v1.0; nowe parametry w v1.x dostają wyższy hint).
@@ -42,9 +42,9 @@ Liczba parametrów w v1.0: **141** (sprawdzane skryptem spójności; zob. SPEC_B
 ### 2.3 Engine (wspólne)
 | ID | Nazwa | Typ | Zakres / wartości | Domyślna | Skala · wygładzanie | Auto | Uwagi |
 |---|---|---|---|---|---|---|---|
-| `engine` | Engine | choice | Divide · Track · Trigger · Harmonic · Hybrid | Divide | X 30 ms | A | zmiana nie zmienia latencji |
+| `engine` | Engine | choice | Divide · Track · Trigger · Harmonic · Hybrid | Track | X 30 ms | A | zmiana nie zmienia latencji; domyślnie Track (od 0.2; wcześniej Divide) |
 | `sub1_level` | Sub −1 Level | float | −60…+12 dB (−60 = Off) | 0 | lin dB · G20 | A | dla HARMONIC = poziom harmonicznych |
-| `sub2_level` | Sub −2 Level | float | −60…+12 dB | −60 | lin dB · G20 | A | nie dotyczy HARMONIC |
+| `sub2_level` | Sub −2 Level | float | −60…+12 dB | −6 | lin dB · G20 | A | nie dotyczy HARMONIC; domyślnie −6 dB (od 0.2; wcześniej Off) |
 | `shape` | Shape | float | 0…100 % | 0 | lin · L20 | A | 0 = sinus, 100 = kształt natywny silnika; DIVIDE: przesuw odcięcia filtra wygładzającego, poziom stały (SPEC §6.2) |
 | `base_mode` | Base Freq Mode | choice | Auto · Fixed | Auto | – | A | |
 | `base_freq` | Base Frequency | float | 20…200 Hz | 45 | log · F20 | A | = częstotliwość Sub −1 (DIVIDE, TRACK, TRIGGER); = podstawowa źródła (HARMONIC) |
@@ -195,8 +195,16 @@ Pełna lista ID: `eq1_on` `eq1_type` `eq1_freq` `eq1_gain` `eq1_q` · `eq2_on` `
 | `lfe_bleed` | LFE Bleed | float | −60…−6 dB (−60 = Off) | −60 | lin dB · G20 | A | wysyłka do kanałów głównych |
 | `lfe_trim` | LFE Trim | float | −24…+12 dB | 0 | lin dB · G20 | A | |
 
+### 2.15 Dodane w 0.2 (hint wersji 2)
+Parametry dodane po wydaniu 0.1 (projekt: superpowers/specs/2026-11-05-subgen-resynth-weight-design.md). Stan zapisany bez nich wczytuje je z wartością neutralną (§5 pkt 3), nowa instancja — z domyślną.
+| ID | Nazwa | Typ | Zakres / wartości | Domyślna | Skala · wygładzanie | Auto | Uwagi |
+|---|---|---|---|---|---|---|---|
+| `pitch_hold` | Hold Pitch | bool | off · on | on | – | A | TRACK: przy niskiej pewności, gdy źródło gra, sub trzyma ostatnią pewną wysokość i bramka zostaje otwarta; kończy się ze źródłem; neutralna: off |
+| `weight_amount` | Weight | float | 0…10 dB | 3 | lin dB · G20 | A | wypukłość niskich z harmonicznymi na dry, przed sumowaniem (nie w bypassie); 0 dB = tożsamość; neutralna: 0 |
+| `weight_freq` | Weight Freq | float | 60…180 Hz | 80 | log · F20 | A | środek wypukłości |
+
 ## 3. Wartości inicjalne („Init”)
-Domyślne z tabel powyżej tworzą preset „Init”: silnik Divide, Sub −1 0 dB, Sub −2 Off, Sub Level −6 dB, Drive 0%, tryb Add, Dry 0 dB, Output Mode Auto, jakość Mix. Ustawienia Init mają zachowywać dry bit-exact (po kompensacji latencji) przy `sub_level` = Off.
+Domyślne z tabel powyżej tworzą preset „Init” (od 0.2 w duchu resyntezy sub i wzmacniacza basu z harmonicznymi; projekt w superpowers/specs/2026-11-05-subgen-resynth-weight-design.md): silnik Track (Locked) z Hold Pitch, Sub −1 0 dB, Sub −2 −6 dB, Sub Level −6 dB, Drive 0%, Weight +3 dB przy 80 Hz, tryb Add, Dry 0 dB, Output Mode Auto, jakość Mix. Dry zostaje bit-exact (po kompensacji latencji) przy `sub_level` = Off i `weight_amount` = 0.
 
 ## 4. Identyfikatory zarezerwowane (v1.1+)
 `note_lock` · `note_scale` · `bass_mono_freq` · `ms_mode` · `eq_phase` · `band2_*` (druga ścieżka źródłowa) · `midi_*` · `spec_*` (silnik SPECTRAL) · `route_matrix_*` (macierz per kanał). ID zarezerwowane nie mogą być użyte do innych celów.

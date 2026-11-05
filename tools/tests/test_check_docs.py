@@ -24,10 +24,10 @@ class TestCheckDocs(unittest.TestCase):
         (tmp / "SPEC.md").write_text(spec_text, encoding="utf-8")
         return tmp
 
-    def test_registry_has_141_ids(self):
+    def test_registry_has_144_ids(self):
         ids = check_docs.registry_ids((DOCS / "PARAMETERS.md").read_text(encoding="utf-8"))
-        self.assertEqual(len(ids), 141)
-        self.assertEqual(len(set(ids)), 141)
+        self.assertEqual(len(ids), 144)
+        self.assertEqual(len(set(ids)), 144)
         self.assertIn("eq5_q", ids)
         self.assertNotIn("eqN_q", ids)
 

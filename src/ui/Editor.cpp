@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "ui/Editor.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "plugin/PluginProcessor.h"
@@ -76,7 +77,8 @@ AdvancedPanel::AdvancedPanel(plugin::SubGenProcessor& p, int page, int engine) :
         if (!groupVisible(group, engine))
             continue;
         Placed placed{group.title, {}, {}, false};
-        const int n = static_cast<int>(group.ids.size()) + (group.ids.front() == ParamId::mix_law ? 1 : 0);
+        const bool withAutoDelay = std::find(group.ids.begin(), group.ids.end(), ParamId::align_ms) != group.ids.end();
+        const int n = static_cast<int>(group.ids.size()) + (withAutoDelay ? 1 : 0);
         const int cols = (n + 2) / 3;
         placed.area = {x, 10, cols * cellW, top - 10 + 3 * cellH};
         for (int i = 0; i < static_cast<int>(group.ids.size()); ++i)
@@ -95,7 +97,7 @@ AdvancedPanel::AdvancedPanel(plugin::SubGenProcessor& p, int page, int engine) :
             placed.controls.push_back(c.get());
             controls.push_back(std::move(c));
         }
-        if (group.ids.front() == ParamId::mix_law) // the dry delay's Auto action (SPEC §9.2)
+        if (withAutoDelay) // the dry delay's Auto action (SPEC §9.2)
         {
             autoDelay = std::make_unique<FlatButton>("Auto delay");
             autoDelay->setTooltip("Set Align to the sub path's delay at the current pitch");
@@ -267,7 +269,10 @@ SubGenEditor::SubGenEditor(plugin::SubGenProcessor& p)
     control(ParamId::dry_level)->setLabel("Dry");
     control(ParamId::out_trim)->setLabel("Output");
     control(ParamId::wet_only)->setLabel("Wet only");
-    control(ParamId::out_mode)->setLabel("Output mode");
+    control(ParamId::weight_amount)->setLabel("Weight");
+    control(ParamId::weight_freq)->setLabel("Weight freq");
+    control(ParamId::weight_amount)->setTooltip(
+        "Weight: a low bump with harmonics on the dry, so the bass reads on small speakers too. 0 dB leaves the dry as it is.");
     autoAlign.accent = true;
     autoAlign.setTooltip("Find the sub's polarity and phase rotation that sum best with the dry (plays a few seconds first)");
     autoAlign.onClick = [this] { startAutoAlign(); };
@@ -352,8 +357,9 @@ void SubGenEditor::layoutMain()
     control(ParamId::dry_level)->setBounds(796, y0 + 40, med.x, med.y);
     control(ParamId::mix)->setBounds(796, y0 + 40, med.x, med.y);
     control(ParamId::out_trim)->setBounds(892, y0 + 40, med.x, med.y);
-    control(ParamId::wet_only)->setBounds(800, y0 + 158, 180, 28);
-    control(ParamId::out_mode)->setBounds(800, y0 + 196, 180, 46);
+    control(ParamId::weight_amount)->setBounds(796, y0 + 148, med.x, med.y);
+    control(ParamId::weight_freq)->setBounds(892, y0 + 148, med.x, med.y);
+    control(ParamId::wet_only)->setBounds(800, y0 + 262, 180, 26);
 
     const int tabW = 84;
     for (size_t i = 0; i < tabs.size(); ++i)

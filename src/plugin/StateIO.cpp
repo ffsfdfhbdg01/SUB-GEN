@@ -214,18 +214,22 @@ void applyState(const juce::XmlElement* state, juce::AudioProcessorValueTreeStat
         for (const auto* p : state->getChildWithTagNameIterator("PARAM"))
             if (const auto v = number(p->getStringAttribute("value")))
                 saved.emplace(p->getStringAttribute("id"), *v);
-    for (const auto& spec : params::kParamSpecs)
+    for (size_t index = 0; index < params::kParamSpecs.size(); ++index)
     {
+        const auto& spec = params::kParamSpecs[index];
+        const auto* added = params::addedParam(static_cast<params::ParamId>(index));
         auto* param = parameters.getParameter(spec.id);
         const auto* value = parameters.getRawParameterValue(spec.id);
         if (param == nullptr || value == nullptr)
             continue;
         const auto& range = param->getNormalisableRange();
         const auto it = saved.find(spec.id);
+        // missing: a parameter added since the state was saved takes its neutral value, any other its default
         const float target = it != saved.end()
                                  ? static_cast<float>(std::clamp(it->second, static_cast<double>(range.start),
                                                                  static_cast<double>(range.end)))
-                                 : range.convertFrom0to1(param->getDefaultValue()); // as the APVTS starts it
+                             : state != nullptr && added != nullptr ? added->neutral
+                                                                    : range.convertFrom0to1(param->getDefaultValue());
         setExactly(*param, *value, target);
     }
     extra = extraFrom(state);

@@ -177,9 +177,9 @@ void setRotation(SubGenProcessor& p, double psiDeg)
 }
 } // namespace
 
-TEST_CASE("T-STATE-01 all 141 parameters round-trip bit-identically", "[state]")
+TEST_CASE("T-STATE-01 all 144 parameters round-trip bit-identically", "[state]")
 {
-    REQUIRE(params::kNumParams == 141);
+    REQUIRE(params::kNumParams == 144);
     auto p = makeProcessor({});
     Xorshift next{0x2545F4914F6CDD1Dull};
     randomise(*p, next);
@@ -220,7 +220,7 @@ TEST_CASE("the state XML holds stateVersion 1, every parameter, UI, AB, ALIGN an
     int params = 0;
     for (auto* c : xml->getChildWithTagNameIterator("PARAM"))
         params += c->hasAttribute("id") && c->hasAttribute("value") ? 1 : 0;
-    CHECK(params == 141);
+    CHECK(params == 144);
     for (const char* tag : {"UI", "AB", "ALIGN", "PRESET"})
     {
         INFO(tag);
@@ -402,8 +402,11 @@ TEST_CASE("T-STATE-04 corrupt and unknown states (1000 fuzzed blobs) fall back t
                 const int kind = it == fault.params.end() ? 0 : it->second;
                 if (kind == 0)
                     ok = ok && sameBits(v, kept[i]);
-                else if (kind == 1)
-                    ok = ok && sameDefault(v, defaults[i]);
+                else if (kind == 1) // missing or unreadable: the default, the neutral value for one added since 0.1
+                {
+                    const auto* added = params::addedParam(static_cast<params::ParamId>(i));
+                    ok = ok && (added != nullptr ? v == added->neutral : sameDefault(v, defaults[i]));
+                }
                 else
                 {
                     const double edge = kind == 2 ? spec.max : spec.min;
@@ -580,4 +583,30 @@ TEST_CASE("the editor opens and closes 100 times without leaks", "[state]")
     CHECK(okFew);
     CHECK(okMany);
     CHECK(std::abs(many - few) < 90); // under one per editor: an editor's component tree is thousands
+}
+
+TEST_CASE("a state saved before 0.2 loads the parameters added since at their neutral values, so it sounds the same",
+          "[state]")
+{
+    auto p = makeProcessor({});
+    juce::MemoryBlock blob;
+    p->getStateInformation(blob);
+    auto xml = plugin::decompressState(blob.getData(), static_cast<int>(blob.getSize()));
+    REQUIRE(xml != nullptr);
+    for (const char* id : {"pitch_hold", "weight_amount", "weight_freq"}) // as a 0.1 state: without them
+        for (auto* c : xml->getChildWithTagNameIterator("PARAM"))
+            if (c->getStringAttribute("id") == id)
+            {
+                xml->removeChildElement(c, true);
+                break;
+            }
+    const auto old = plugin::compressState(*xml);
+    auto q = makeProcessor({});
+    q->setStateInformation(old.getData(), static_cast<int>(old.getSize()));
+    CHECK(raw(*q, "pitch_hold") == 0.0f);    // off: Track gates as in 0.1
+    CHECK(raw(*q, "weight_amount") == 0.0f); // 0 dB: the dry untouched
+    CHECK(raw(*q, "weight_freq") == 80.0f);  // its default (no sound of its own)
+    auto fresh = makeProcessor({}); // a new instance: the defaults
+    CHECK(raw(*fresh, "pitch_hold") == 1.0f);
+    CHECK(raw(*fresh, "weight_amount") == 3.0f);
 }

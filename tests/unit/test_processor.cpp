@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The plug-in processor (SPEC §4, §9; SPEC_IO_UI §7.4): the S1-S8 flow, summation and bypass, latency, invariance,
 // real-time safety, stability and the warnings.
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <limits>
+#include <numbers>
 #include <numeric>
 #include <vector>
 
@@ -101,6 +104,7 @@ TEST_CASE("T-SUM-01 sub Off: output equals the input delayed by L_total, bit-exa
                     setParam(s, "quality", qualityValue(v.q));
                     setParam(s, "filt_phase", v.linear ? 1.0f : 0.0f);
                     setParam(s, "sub_level", -60.0f);
+                    noWeight(s);
                 });
                 REQUIRE(p != nullptr);
                 const auto in = sig15(set, kFs, 0.25);
@@ -168,6 +172,7 @@ TEST_CASE("T-LAT-01 impulse: dry exactly L_total, TRIGGER sub +- 1 sample of L_s
         auto p = makeProcessor({}, kFs, 512, [&](SubGenProcessor& s) {
             setParam(s, "quality", qualityValue(q));
             setParam(s, "sub_level", -60.0f);
+            noWeight(s);
         });
         auto x = std::vector<double>(24000, 0.0);
         x[1000] = 0.5;
@@ -467,17 +472,20 @@ TEST_CASE("T-UI-02 warning logic W-01..W-12 except W-11", "[processor]")
     };
     CHECK(warned(Warning::SubCancelsInMono, perChannel, late));
     CHECK_FALSE(warned(Warning::SubCancelsInMono, perChannel, bass));
-    // W-06: output at or over 0 dBFS (the dry alone, sub Off: a -1 dBFS sine peaks at 1.12 with dry +2 dB, at 0.89 at 0 dB)
+    // W-06: output at or over 0 dBFS (the dry alone, sub and Weight off: a -1 dBFS sine peaks at 1.12 with dry +2 dB, at
+    // 0.89 at 0 dB)
     const auto loud = same(sig::sine(60.0, kFs, 1.0, -1.0), 2);
     CHECK(warned(Warning::Clip, [](SubGenProcessor& s) {
         setParam(s, "sub_level", -60.0f);
         setParam(s, "dry_level", 2.0f);
+        noWeight(s);
     }, loud));
-    CHECK_FALSE(warned(Warning::Clip, [](SubGenProcessor& s) { setParam(s, "sub_level", -60.0f); }, loud));
+    CHECK_FALSE(warned(Warning::Clip, [](SubGenProcessor& s) { setParam(s, "sub_level", -60.0f); noWeight(s); }, loud));
     // W-08: Linear Phase outside Print
     CHECK(warned(Warning::LinearPhaseNeedsPrint, [](SubGenProcessor& s) { setParam(s, "filt_phase", 1.0f); }, bass));
-    // W-09: the confidence gate holds the sub back while the source plays
-    CHECK(warned(Warning::LowConfidence, [](SubGenProcessor& s) { setParam(s, "conf_gate", 100.0f); },
+    // W-09: the confidence gate holds the sub back while the source plays (DIVIDE: TRACK's Hold pitch keeps a sub that
+    // has started)
+    CHECK(warned(Warning::LowConfidence, [](SubGenProcessor& s) { setParam(s, "engine", 0.0f); setParam(s, "conf_gate", 100.0f); },
                  same(sig::bandNoise(kFs, 1.0, 30.0, 120.0, -12.0), 2)));
     CHECK_FALSE(warned(Warning::LowConfidence, {}, bass));
     // W-10: exactly when sanitise() corrects the range (range_hi under 1.2 range_lo moves range_lo down), also at the
@@ -668,7 +676,7 @@ TEST_CASE("1e4 random automation steps of every automatable parameter stay finit
     for (auto* param : p->getParameters())
         if (param->isAutomatable())
             automatable.push_back(dynamic_cast<juce::RangedAudioParameter*>(param));
-    REQUIRE(automatable.size() == 138);
+    REQUIRE(automatable.size() == 141);
     const auto x = sig::bass808(kFs);
     juce::AudioBuffer<double> buffer(2, 64);
     juce::MidiBuffer midi;
@@ -703,4 +711,31 @@ TEST_CASE("1e4 random automation steps of every automatable parameter stay finit
     // out_trim +12: +247 dB). A jump threshold in dB/ms is T-STAB-01's (Phase 5): src_mode, the route delays and
     // TRIGGER's onsets switch hard by design.
     CHECK(peak <= 1e13);
+}
+
+namespace
+{
+// the output's gain at hz over the last half second of a 1.5 s sine at 0.05 (quiet: the harmonics stay small)
+double dryGainDb(const std::function<void(SubGenProcessor&)>& setup, double hz)
+{
+    auto p = makeProcessor(Layout{}, kFs, 512, setup);
+    REQUIRE(p != nullptr);
+    std::vector<double> x(static_cast<size_t>(1.5 * kFs));
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = 0.05 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(i) / kFs);
+    const auto out = render(*p, {x, x});
+    const auto tail = [](const std::vector<double>& v) { return std::span<const double>(v).last(static_cast<size_t>(0.5 * kFs)); };
+    return 20.0 * std::log10(harmonicAmps(tail(out[0]), kFs, hz, 1)[0] / harmonicAmps(tail(x), kFs, hz, 1)[0]);
+}
+} // namespace
+
+TEST_CASE("Weight lifts the dry's low end by its amount at its frequency; bypass and 0 dB leave the dry", "[processor]")
+{
+    auto subOff = [](SubGenProcessor& p) { setParam(p, "sub_level", -60.0f); };
+    CHECK(dryGainDb(subOff, 80.0) == Catch::Approx(3.0).margin(0.5)); // the default: +3 dB at 80 Hz
+    CHECK(dryGainDb([](SubGenProcessor& p) { setParam(p, "sub_level", -60.0f); setParam(p, "weight_amount", 8.0f);
+                                             setParam(p, "weight_freq", 150.0f); }, 150.0) == Catch::Approx(8.0).margin(0.5));
+    CHECK(std::abs(dryGainDb([](SubGenProcessor& p) { setParam(p, "sub_level", -60.0f); setParam(p, "weight_amount", 0.0f); }, 80.0)) < 1e-6);
+    CHECK(std::abs(dryGainDb([](SubGenProcessor& p) { setParam(p, "sub_level", -60.0f); setParam(p, "weight_amount", 10.0f);
+                                                      setParam(p, "bypass", 1.0f); }, 80.0)) < 1e-6);
 }

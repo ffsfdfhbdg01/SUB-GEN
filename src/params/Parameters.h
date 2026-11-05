@@ -74,6 +74,27 @@ constexpr size_t slot(ParamId id) { return static_cast<size_t>(id); }
 
 constexpr const ParamSpec& spec(ParamId id) { return kParamSpecs[slot(id)]; }
 
+// The parameters added after 0.1 (PARAMETERS §2.15): JUCE version hint 2, and the neutral value a state saved without
+// them loads (PARAMETERS §5 rule 3: an older session sounds as it did).
+struct AddedParam
+{
+    ParamId id;
+    int versionHint;
+    float neutral;
+};
+
+inline constexpr std::array kAddedParams{AddedParam{ParamId::pitch_hold, 2, 0.0f},
+                                         AddedParam{ParamId::weight_amount, 2, 0.0f},
+                                         AddedParam{ParamId::weight_freq, 2, 80.0f}};
+
+constexpr const AddedParam* addedParam(ParamId id)
+{
+    for (const auto& a : kAddedParams)
+        if (a.id == id)
+            return &a;
+    return nullptr;
+}
+
 // The index of a choice's label, -1 when it has none.
 constexpr int choiceIndex(ParamId id, std::string_view label)
 {

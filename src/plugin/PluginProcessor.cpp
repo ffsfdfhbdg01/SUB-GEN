@@ -138,6 +138,10 @@ void SubGenProcessor::configure(bool fadeIn)
         d.prepare(capacity);
     inBuffer.setSize(std::max(1, inChannels + keyChannels), chunk);
     dryBuffer.setSize(std::max(1, outChannels), chunk);
+    weightedBuffer.setSize(std::max(1, outChannels), chunk);
+    for (auto& w : weights)
+        w.prepare(fs);
+    weightFresh = true;
     subBuffer.setSize(std::max(1, outChannels), chunk);
     outBuffer.setSize(std::max(1, outChannels), chunk);
     for (auto* v : {&streamL, &streamR, &sub0, &sub1, &keyScratch})
@@ -187,6 +191,8 @@ void SubGenProcessor::resetStates()
     for (auto& c : chains)
         c.reset();
     router.reset();
+    for (auto& w : weights)
+        w.reset();
     subCorrelation.reset();
     madeFSub = {-1.0, -1.0};
     paramsChanged = true; // the reset stages take their parameters afresh
@@ -219,6 +225,11 @@ void SubGenProcessor::applyParameters()
             h.setControl(control);
         }
         bypassFade.setTarget(snapshot.on(ParamId::bypass) ? 1.0 : 0.0);
+        for (int j = 0; j < outChannels; ++j) // Weight: not on an LFE channel, which carries no dry of its own
+            weights[static_cast<size_t>(j)].setParams(
+                outMap.ch[static_cast<size_t>(j)].cls == routing::ChannelClass::Lfe ? 0.0 : snapshot[ParamId::weight_amount],
+                snapshot[ParamId::weight_freq], weightFresh);
+        weightFresh = false;
         warningBits.set(Warning::NoLfeChannel, snapshot.index(ParamId::out_mode) == 4 && !outMap.hasLfe);
         warningBits.set(Warning::KeyNotConnected, snapshot.index(ParamId::sc_use) != 0 && !keyAvailable);
     }
@@ -417,18 +428,22 @@ void SubGenProcessor::processSubBlock(int offset, int n)
         auto& line = dryDelay[static_cast<size_t>(j)];
         for (int i = 0; i < n; ++i)
             d[i] = line.process(x != nullptr ? x[i] : 0.0);
+        auto* w = weightedBuffer.getWritePointer(j, offset);
+        std::copy(d, d + n, w);
+        weights[static_cast<size_t>(j)].process(std::span<double>(w, len));
     }
 
     // S8, then the bypass and the mute
-    std::array<const double*, kMaxChannels> dryPtr{}, subPtr{};
+    std::array<const double*, kMaxChannels> dryPtr{}, weightedPtr{}, subPtr{};
     std::array<double*, kMaxChannels> outPtr{};
     for (int j = 0; j < outChannels; ++j)
     {
         dryPtr[static_cast<size_t>(j)] = dryBuffer.getReadPointer(j, offset);
+        weightedPtr[static_cast<size_t>(j)] = weightedBuffer.getReadPointer(j, offset);
         subPtr[static_cast<size_t>(j)] = subBuffer.getReadPointer(j, offset);
         outPtr[static_cast<size_t>(j)] = outBuffer.getWritePointer(j, offset);
     }
-    summation.process(dryPtr.data(), subPtr.data(), outPtr.data(), outChannels, n);
+    summation.process(weightedPtr.data(), subPtr.data(), outPtr.data(), outChannels, n);
     for (int i = 0; i < n; ++i)
     {
         const double b = sCurve(bypassFade.next());

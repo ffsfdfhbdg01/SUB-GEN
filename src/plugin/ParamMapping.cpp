@@ -44,6 +44,7 @@ engines::EngineControl engineControlOf(const params::ParamSnapshot& s, bool keyT
     c.trkSpeed = fraction(s, ParamId::trk_speed);
     c.trkGlideMs = s[ParamId::trk_glide];
     c.phaseGen = static_cast<engines::PhaseGen>(std::clamp(s.index(ParamId::phase_gen), 0, 2));
+    c.pitchHold = s.on(ParamId::pitch_hold);
     c.trigThreshDb = s[ParamId::trig_thresh];
     c.trigHoldMs = s[ParamId::trig_hold];
     c.trigLockoutMs = s[ParamId::trig_lockout];

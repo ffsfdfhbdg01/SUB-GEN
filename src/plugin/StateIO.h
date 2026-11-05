@@ -32,8 +32,9 @@ std::unique_ptr<juce::XmlElement> makeState(juce::AudioProcessorValueTreeState& 
 // state, no or an unknown version (a newer plug-in's state included).
 std::unique_ptr<juce::XmlElement> migrate(std::unique_ptr<juce::XmlElement> state);
 
-// Every registered parameter from the state when it holds a finite number for it (clamped to the range), otherwise its
-// default; unknown ids are ignored; the values are set exactly as saved. A null state: every parameter and the extra
+// Every registered parameter from the state when it holds a finite number for it (clamped to the range); a parameter
+// the state lacks takes its neutral value when it was added after 0.1 (params::kAddedParams), otherwise its default;
+// unknown ids are ignored; the values are set exactly as saved. A null state: every parameter and the extra
 // state at their defaults.
 void applyState(const juce::XmlElement* state, juce::AudioProcessorValueTreeState& parameters, ExtraState& extra);
 

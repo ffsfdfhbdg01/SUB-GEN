@@ -30,12 +30,13 @@ ParamSnapshot defaults()
 }
 } // namespace
 
-TEST_CASE("layout has 141 parameters with unique ASCII ids of <= 24 chars and version hint 1", "[params]")
+TEST_CASE("layout has 144 parameters with unique ASCII ids of <= 24 chars; version hint 1, 2 for those added in 0.2",
+          "[params]")
 {
     plugin::SubGenProcessor processor;
     const auto& all = processor.getParameters();
-    REQUIRE(all.size() == 141);
-    CHECK(kNumParams == 141);
+    REQUIRE(all.size() == 144);
+    CHECK(kNumParams == 144);
     std::set<juce::String> ids;
     for (int i = 0; i < all.size(); ++i)
     {
@@ -43,11 +44,12 @@ TEST_CASE("layout has 141 parameters with unique ASCII ids of <= 24 chars and ve
         INFO(p.paramID);
         CHECK(p.paramID.length() <= 24);
         CHECK(std::all_of(p.paramID.begin(), p.paramID.end(), [](juce::juce_wchar c) { return c < 128; }));
-        CHECK(p.getVersionHint() == 1);
+        const bool added = p.paramID == "pitch_hold" || p.paramID == "weight_amount" || p.paramID == "weight_freq";
+        CHECK(p.getVersionHint() == (added ? 2 : 1));
         CHECK(p.paramID == juce::String(kParamSpecs[static_cast<size_t>(i)].id)); // in ParamId order
         ids.insert(p.paramID);
     }
-    CHECK(ids.size() == 141);
+    CHECK(ids.size() == 144);
 }
 
 TEST_CASE("defaults and ranges equal the registry", "[params]")
@@ -119,9 +121,10 @@ TEST_CASE("Off at -60 dB maps to gain 0.0 exactly", "[params]")
     auto s = defaults();
     s[ParamId::sub_level] = -60.0f;
     s[ParamId::gate_range] = -60.0f;
+    s[ParamId::sub2_level] = -60.0f;
     CHECK(s.gain(ParamId::sub_level) == 0.0);                   // -60 = Off
     CHECK(s.gain(ParamId::gate_range) == std::pow(10.0, -3.0)); // a depth, not an Off gain
-    CHECK(s.gain(ParamId::sub2_level) == 0.0);                  // its default, -60, is Off
+    CHECK(s.gain(ParamId::sub2_level) == 0.0);                  // -60 = Off (its default is -6 since 0.2)
     int offGains = 0;
     for (const auto& spec : kParamSpecs)
         offGains += spec.scale == Scale::LinDbOff ? 1 : 0;
