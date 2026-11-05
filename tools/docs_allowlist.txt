@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Identifiers in backticks in SPEC.md, SPEC_IO_UI.md and TEST_PLAN.md that are not parameters (tools/check_docs.py).
+# One per line; reviewed by hand when added.
+
+# Signals and internal quantities (SPEC §5-§9)
+x_b
+e_pk
+e_pk_s
+e_rms
+e_t
+f_sub1
+f_est
+fs
+fs_d
+d
+u
+c
+p
+s1
+s2
+y1
+y2
+y_h
+y_out
+w_i
+w_k
+t_prev
+g_req
+pol_j
+b_mode
+arm2_pending
+armed_up
+armed_dn
+sub
+
+# Code: source modules (SPEC §3), build targets, C++ types and JUCE names (channel types, methods)
+core
+dsp
+engines
+chain
+routing
+analysis
+params
+plugin
+ui
+subgen_dsp
+double
+paint
+left
+right
+centre
+discrete
+unknown
+
+# Tools and CI
+auval
+dumpbin
+lipo
+otool
+pkgutil
+workflow_dispatch
+
+# Prose: SPEC.md §0 shows what "in `code` characters" looks like
+kodu

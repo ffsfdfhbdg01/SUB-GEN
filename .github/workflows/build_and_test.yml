@@ -1,0 +1,176 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: build and test
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      aax:
+        description: "Also build the AAX format (unsigned)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Ninja
+        run: command -v ninja || brew install ninja
+      - name: Configure and build (universal)
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+      - name: Unit tests and docs check
+        run: ctest --preset release
+      - name: pluginval (strictness 10) on VST3 and AU, auval (T-FMT-02, SPK-3)
+        run: |
+          scripts/fetch_pluginval.sh
+          scripts/validate.sh build/release
+      - name: Architectures and dynamic dependencies (T-FMT-05, T-FMT-06)
+        run: |
+          artefacts=build/release/SubGen_artefacts/Release
+          for binary in "$artefacts/VST3/SUB-GEN.vst3/Contents/MacOS/SUB-GEN" "$artefacts/AU/SUB-GEN.component/Contents/MacOS/SUB-GEN"; do
+            lipo -info "$binary"
+            for arch in arm64 x86_64; do
+              lipo "$binary" -verify_arch "$arch"
+              otool -arch "$arch" -L "$binary"
+              extra=$(otool -arch "$arch" -L "$binary" | tail -n +2 | grep -v -E '^[[:space:]]+(/System/Library/|/usr/lib/)' || true)
+              if [ -n "$extra" ]; then echo "unexpected dependencies ($arch): $extra"; exit 1; fi
+            done
+          done
+      - name: Package VST3 and AU
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/release/SubGen_artefacts/Release/VST3/SUB-GEN.vst3 dist/SUB-GEN-macOS-VST3.zip
+          ditto -c -k --keepParent build/release/SubGen_artefacts/Release/AU/SUB-GEN.component dist/SUB-GEN-macOS-AU.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SUB-GEN-macOS
+          path: dist/
+
+  build-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Configure and build
+        run: |
+          cmake --preset ci-windows
+          cmake --build --preset ci-windows
+      - name: Unit tests and docs check
+        run: ctest --preset ci-windows
+      - name: pluginval (strictness 10) on VST3 (SPK-3)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip -OutFile pluginval.zip
+          $expected = 'C08E61CE3B96DB41636F8EC7E76F4C7E2C13EBDAC7FA1B5A1F52B4F32EC715AB'
+          $actual = (Get-FileHash pluginval.zip -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "pluginval_Windows.zip SHA-256 mismatch: $actual" }
+          Expand-Archive pluginval.zip -DestinationPath tools/bin
+          & tools/bin/pluginval.exe --strictness-level 10 --validate build/ci-windows/SubGen_artefacts/Release/VST3/SUB-GEN.vst3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Static runtime and architecture (SPK-5, T-FMT-05, T-FMT-06)
+        shell: pwsh
+        run: scripts/ci/check_windows_deps.ps1 -Binary build/ci-windows/SubGen_artefacts/Release/VST3/SUB-GEN.vst3/Contents/x86_64-win/SUB-GEN.vst3
+      - name: Package VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/ci-windows/SubGen_artefacts/Release/VST3/SUB-GEN.vst3 -DestinationPath dist/SUB-GEN-Windows-VST3.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SUB-GEN-Windows
+          path: dist/
+
+  sanitizers:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [asan, tsan]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Ninja
+        run: command -v ninja || brew install ninja
+      - name: Build the test executables
+        run: |
+          cmake --preset ${{ matrix.preset }}
+          cmake --build --preset ${{ matrix.preset }} --target subgen_dsp_tests subgen_plugin_tests
+      - name: Tests
+        run: ctest --preset ${{ matrix.preset }}
+
+  rtsan:
+    runs-on: ubuntu-24.04
+    continue-on-error: true # SHOULD (SPEC_BUILD_RELEASE): RealtimeSanitizer needs clang >= 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: clang 20 from the signed apt.llvm.org repository (key file pinned by SHA-256, one key, known fingerprint)
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o llvm.asc
+          echo "8b2a587ffd672c4687e7581dad4b2f6c1bb2ad6b480cd9771ba2ff48e0b8c75d  llvm.asc" | sha256sum -c -
+          primaries=$(gpg --show-keys --with-colons llvm.asc | awk -F: '/^pub:/ {c++} END {print c+0}')
+          fpr=$(gpg --show-keys --with-colons llvm.asc | awk -F: '/^fpr:/ {print $10; exit}')
+          if [ "$primaries" != 1 ] || [ "$fpr" != 6084F3CF814B57C1CF12EFD515CF4D18AF4F7421 ]; then
+            echo "unexpected LLVM key file: $primaries primary keys, first fingerprint $fpr"; exit 1
+          fi
+          sudo install -m 0644 llvm.asc /etc/apt/keyrings/apt.llvm.org.asc
+          echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm-20.list
+          sudo apt-get update
+          # JUCE builds juceaide while configuring; on Linux its juce_graphics needs FreeType and fontconfig
+          sudo apt-get install -y clang-20 libclang-rt-20-dev libfreetype-dev libfontconfig1-dev
+      - name: Build subgen_dsp_tests with -fsanitize=realtime
+        run: |
+          cmake -S . -B build/rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DSUBGEN_SANITIZE=realtime -DSUBGEN_BUILD_PLUGIN=OFF
+          cmake --build build/rtsan --target subgen_dsp_tests
+      - name: Tests
+        run: build/rtsan/tests/subgen_dsp_tests
+
+  aax-build:
+    if: github.event_name == 'workflow_dispatch' && inputs.aax
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Ninja
+        run: command -v ninja || brew install ninja
+      - name: Configure and build with AAX
+        run: |
+          cmake --preset release -DSUBGEN_AAX=ON
+          cmake --build --preset release --target SubGen_AAX
+      - name: Package AAX (unsigned)
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/release/SubGen_artefacts/Release/AAX/SUB-GEN.aaxplugin dist/SUB-GEN-macOS-AAX-unsigned.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SUB-GEN-macOS-AAX-unsigned
+          path: dist/

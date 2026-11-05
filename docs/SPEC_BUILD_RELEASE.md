@@ -1,6 +1,6 @@
 # SUB-GEN — SPEC (część 3): build, CI, instalatory, release, budżety, plan Fazy 2, ryzyka
 
-Wersja dokumentu: 0.1 (do akceptacji) · Data: 2026-10-19 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [TEST_PLAN.md](TEST_PLAN.md), [RESEARCH.md](RESEARCH.md)
+Wersja dokumentu: 0.2 (korekty z Fazy 2) · Data: 2026-10-20 · Powiązane: [SPEC.md](SPEC.md), [SPEC_IO_UI.md](SPEC_IO_UI.md), [TEST_PLAN.md](TEST_PLAN.md), [RESEARCH.md](RESEARCH.md)
 
 ## 1. Układ repo
 ```
@@ -83,6 +83,7 @@ Przypięcie narzędzi: pluginval 1.0.4 pobierany po URL z wydania GitHub; `sccac
 Pomiar: benchmark Catch2 na buforach JUCE, 1000 bloków, mediana i p99 względem czasu trwania bloku; raport w TEST_REPORT.
 
 ## 8. Plan Fazy 2 — prototyp DSP offline (Python)
+**Status:** wykonany 2026-10-20 — wyniki w [PHASE2_REPORT.md](PHASE2_REPORT.md), korekty naniesione w SPEC 0.2.
 Środowisko: venv na Sam-dysk (numpy, scipy, matplotlib, soundfile), po zgodzie. Kod w `proto/`, wyniki w `docs/PHASE2_REPORT.md` i `docs/img/`. Pliki WAV do odsłuchu w `renders/` (poza repo; `.gitignore`).
 | ID | Pomiar | Kryterium wyjścia |
 |---|---|---|
@@ -106,7 +107,7 @@ Pomiar: benchmark Catch2 na buforach JUCE, 1000 bloków, mediana i p99 względem
 | SPK-3 | Czy `pluginval` strictness 10 przechodzi na pustej wtyczce w CI macOS/Windows? | PASS |
 | SPK-4 | Czy pkg i Inno Setup budują się na runnerach i instalują/odinstalowują poprawnie? | instalacja cicha + deinstalacja; sprawdzenie plików |
 | SPK-5 | Czy MSVC ze statycznym CRT daje VST3 bez redystrybuowalnych? | uruchomienie na czystym runnerze |
-| SPK-6 | Czy FIR liniowofazowy (partycjonowana konwolucja) mieści się w budżecie CPU i latencji? | zgodnie z §7; inaczej Linear Phase → v1.1 |
+| SPK-6 | Czy FIR liniowofazowy LP (N_LIN wg SPEC §7.6, partycjonowana konwolucja) mieści się w budżecie CPU? | zgodnie z §7; inaczej Linear Phase → v1.1 |
 
 ## 10. Rejestr ryzyk
 | ID | Ryzyko | Prawd. | Wpływ | Mitigacja |
@@ -131,7 +132,7 @@ Skrypt jednorazowy (w katalogu roboczym sesji) sprawdza, że: (a) rejestr zawier
 | Wersja | Zakres |
 |---|---|
 | **1.0** | wszystko MUST z SPEC (silniki Divide/Track/Trigger/Harmonic/Hybrid; tor sub; trzy warstwy fazy; tryby wyjścia i LFE; Windows + macOS; instalatory) |
-| 1.1 | SPECTRAL/HQ, Linear Phase PEQ (lub Linear Phase HP/LP, jeśli SPK-6 negatywne), CLAP (`clap-juce-extensions`), AAX w release (po podpisie), macierz routingu per kanał, wielopasmowe źródło |
+| 1.1 | SPECTRAL/HQ, Linear Phase PEQ i Linear Phase HP (D5); całe Linear Phase, jeśli SPK-6 negatywne, CLAP (`clap-juce-extensions`), AAX w release (po podpisie), macierz routingu per kanał, wielopasmowe źródło |
 | 1.x | Note-lock, MIDI-trigger, M/S, podgląd „small speaker” i bass management, Auto-Align „Learn”, analizator z wagą ISO 226 |
 Reguły cięcia zakresu: jeśli SPK-6 negatywny → Linear Phase przechodzi do 1.1; jeśli P2-03 nie spełni kryteriów → TRACK oznaczony „beta” w v1.0 (Divide/Trigger/Harmonic pozostają); jeśli SPK-2 negatywny dla 5.0→5.1 → warianty x.0→x.1 tylko tam, gdzie host je akceptuje.
 

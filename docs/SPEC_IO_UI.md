@@ -1,6 +1,6 @@
 # SUB-GEN — SPEC (część 2): kanały, routing, LFE, metering, UI, stan i presety
 
-Wersja dokumentu: 0.1 (do akceptacji) · Data: 2026-10-19 · Powiązane: [SPEC.md](SPEC.md), [PARAMETERS.md](PARAMETERS.md), [TEST_PLAN.md](TEST_PLAN.md)
+Wersja dokumentu: 0.2 (korekty z Fazy 2) · Data: 2026-10-20 · Powiązane: [SPEC.md](SPEC.md), [PARAMETERS.md](PARAMETERS.md), [TEST_PLAN.md](TEST_PLAN.md)
 
 ## 1. Klasyfikacja kanałów
 Wszystkie kanały klasyfikuje się po `AudioChannelSet::getTypeOfChannel` (nigdy po indeksie). Nazwy typów pochodzą z JUCE 9.0.4 (`AudioChannelSet::ChannelType`); dokumentacja JUCE zaznacza, że nazewnictwo kanałów bocznych/tylnych różni się między AAX, VST3 i AU — klasyfikacja do pięciu klas czyni te różnice nieistotnymi.
@@ -49,7 +49,7 @@ W `prepareToPlay` budowane są tablice: dla każdego kanału wejścia i wyjścia
 1. **Wyjście:** tylko kanał LFE (mono); pozostałe kanały to dry (lub cisza przy Wet Only). Gdy wejście ma LFE (np. 5.1→5.1), `LFE_out = LFE_dry + sub` (Add) lub `sub` (Wet Only).
 2. **Źródło:** standardowe `feed_*`. Typowo Front i Center włączone, Surround/Height wyłączone; `feed_lfe` włączane przy wzmacnianiu istniejącego LFE.
 3. **Tor:** różnice względem trybu normalnego: filtry zastąpione przez `lfe_hp_freq` (HP) i `lfe_lp_freq` + `lfe_lp_slope` (LP, pojedyncza sekcja, bez kaskady z `sub_lp_*`); limiter na `lfe_ceiling` (domyślnie −1,0 dBFS); poziom `lfe_trim`. Drive stoi przed filtrami, więc harmoniczne ponad pasmem LFE są odcinane.
-4. **Pasmo:** 20–120 Hz [ITU-R BS.775-4 rekomendacje 4–5 i Annex 7; ATSC A/52]; domyślne nachylenie LPF 24 dB/okt (łagodniejsze niż stromy filtr 8. rzędu, bo enkoder dodaje własny, a Annex 7 ostrzega przed kaskadą LPF i opóźnieniem grupowym). W Print dostępny Linear Phase.
+4. **Pasmo:** 20–120 Hz [ITU-R BS.775-4 rekomendacje 4–5 i Annex 7; ATSC A/52]; domyślny LPF: **Butterworth 24 dB/okt przy 120 Hz** (P2-08, ADR-021) — łagodniejszy niż stromy filtr 8. rzędu, bo enkoder dodaje własny, a Annex 7 ostrzega przed kaskadą LPF i opóźnieniem grupowym. P2-08 (48 kHz): −0,17 dB przy 80 Hz, tłumienie 14,25 dB przy 1,5·fc, opóźnienie grupowe 3,65 / 4,52 / 4,90 ms przy 40 / 80 / 120 Hz. W kaskadzie z filtrem enkodera — **założenie**: eliptyczny 8. rzędu, 0,1 dB / 80 dB, 120 Hz (A/52 podaje tylko rząd i częstotliwość) — daje −0,18 / −0,95 / −3,11 dB przy 80 / 100 / 120 Hz i opóźnienie 11 / 14,5 / 39 ms przy 40 / 80 / 120 Hz (przy 120 Hz dominuje enkoder). W Print dostępny Linear Phase (tylko LP, SPEC §7.6).
 5. **Konwencje poziomu (`lfe_conv`) — dwie:**
    - **+10 dB** — film, DVD-Video, definicja LFE w A/52 i wymiana programów wg ITU-R BS.775-4 (zapis z offsetem −10 dB kompensowanym +10 dB przy odtwarzaniu); sygnał z pliku odtwarza się o 10 dB głośniej względem kanału głównego o tym samym poziomie cyfrowym.
    - **0 dB** — muzyka na nośnikach (DVD-Audio, SACD): brak offsetu odtwarzania.

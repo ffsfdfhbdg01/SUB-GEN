@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# After the Audio Unit is installed: hosts see it once the AU cache is rebuilt (SPEC_BUILD_RELEASE §4.1). Nothing to
+# restart is not an error.
+killall -9 AudioComponentRegistrar >/dev/null 2>&1 || true
+exit 0

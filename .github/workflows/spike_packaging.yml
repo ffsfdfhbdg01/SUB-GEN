@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPK-4 (Phase 3, Task 28): the installers built on the runners and tried there. macOS: the pkg installed, its files
+# and the Audio Unit checked, then removed with its uninstall script. Windows: the Inno Setup exe installed silently,
+# its files, uninstall entry and pluginval on the installed copy checked, then removed silently. The artifacts are the
+# installers with their SHA-256. It also runs on pushes to dev that change the packaging: GitHub dispatches a workflow
+# by hand only when its file is on the default branch.
+name: packaging spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev]
+    paths:
+      - installers/**
+      - scripts/package.sh
+      - .github/workflows/spike_packaging.yml
+
+permissions:
+  contents: read
+
+jobs:
+  macos-pkg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Ninja
+        run: command -v ninja || brew install ninja
+      - name: Configure and build (universal)
+        run: |
+          cmake --preset release -DSUBGEN_BUILD_TESTS=OFF
+          cmake --build --preset release
+      - name: The installer (scripts/package.sh checks its payload)
+        run: scripts/package.sh build/release dist
+      - name: Install, check, uninstall, check
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          # the build copied the plug-ins into ~/Library: away with them, so the checks see the installed ones
+          rm -rf ~/Library/Audio/Plug-Ins/VST3/SUB-GEN.vst3 ~/Library/Audio/Plug-Ins/Components/SUB-GEN.component
+          sudo installer -pkg "dist/SUB-GEN-$version-macOS.pkg" -target /
+          test -f /Library/Audio/Plug-Ins/VST3/SUB-GEN.vst3/Contents/MacOS/SUB-GEN
+          test -f /Library/Audio/Plug-Ins/Components/SUB-GEN.component/Contents/MacOS/SUB-GEN
+          test -x "/Library/Application Support/Vendor/SUB-GEN/uninstall.sh"
+          pkgutil --pkgs | grep com.vendor.subgen
+          auval -v aufx Sbgn Vndr
+          sudo "/Library/Application Support/Vendor/SUB-GEN/uninstall.sh"
+          for left in /Library/Audio/Plug-Ins/VST3/SUB-GEN.vst3 /Library/Audio/Plug-Ins/Components/SUB-GEN.component \
+                      "/Library/Application Support/Vendor/SUB-GEN"; do
+            if [ -e "$left" ]; then echo "left behind: $left"; exit 1; fi
+          done
+          if pkgutil --pkgs | grep -q com.vendor.subgen; then echo "receipts left behind"; exit 1; fi
+      - name: SHA-256
+        run: cd dist && shasum -a 256 *.pkg | tee "$(ls *.pkg).sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SUB-GEN-macOS-pkg
+          path: dist/
+
+  windows-exe:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Configure and build
+        run: |
+          cmake --preset ci-windows -DSUBGEN_BUILD_TESTS=OFF
+          cmake --build --preset ci-windows
+      - name: The installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup 6 is not on the runner" }
+          & $iscc /Qp "/DAppVersion=$version" "/DVst3Dir=$PWD\build\ci-windows\SubGen_artefacts\Release\VST3\SUB-GEN.vst3" "/DOutDir=$PWD\dist" installers\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install silently, check, pluginval on the installed copy, uninstall silently, check
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          Start-Process -FilePath "dist\SUB-GEN-$version-Windows.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          $installed = "$env:CommonProgramFiles\VST3\SUB-GEN.vst3"
+          if (-not (Test-Path "$installed\Contents\x86_64-win\SUB-GEN.vst3")) { throw "the VST3 is not installed" }
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{FE593D89-6024-4EB4-AA31-9E6BB0FF450A}_is1'
+          $entry = Get-ItemProperty $key
+          if ($entry.DisplayVersion -ne $version) { throw "uninstall entry version: $($entry.DisplayVersion)" }
+          Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip -OutFile pluginval.zip
+          $expected = 'C08E61CE3B96DB41636F8EC7E76F4C7E2C13EBDAC7FA1B5A1F52B4F32EC715AB'
+          $actual = (Get-FileHash pluginval.zip -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "pluginval_Windows.zip SHA-256 mismatch: $actual" }
+          Expand-Archive pluginval.zip -DestinationPath tools/bin
+          & tools/bin/pluginval.exe --strictness-level 10 --validate $installed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Start-Process -FilePath ($entry.UninstallString -replace '"', '') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          for ($i = 0; $i -lt 60 -and ((Test-Path $installed) -or (Test-Path $key)); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $installed) { throw "left behind: $installed" }
+          if (Test-Path $key) { throw "the uninstall entry is left behind" }
+      - name: SHA-256
+        shell: pwsh
+        run: |
+          Get-ChildItem dist\*.exe | ForEach-Object {
+            $line = "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+            $line; Set-Content -Path "$($_.FullName).sha256" -Value $line
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SUB-GEN-Windows-exe
+          path: dist/
